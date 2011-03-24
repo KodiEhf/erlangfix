@@ -12,7 +12,7 @@
 %% BodyLength is always the second field in the message,
 %% length refers to the message length up to checksum field
 
-p(<<Data/binary>>, 0) ->
+p(<<_Data/binary>>, 0) ->
     ok;
 p(<<Data/binary>>, Count) ->
     parse(Data),
@@ -25,20 +25,24 @@ parse(<<Data/binary>>) ->
 	[First, Rest] = binary:split(Data, [<<?SOH>>], []),
 	{'BeginString', _Value} = field_parse(First),
 	%% Retreive the second field from the message, which is 'BodyLength'
-	[Second, Message] = binary:split(Rest, [<<?SOH>>], []),
-	{'BodyLength', Length} = field_parse(Second),
+	[Second, _Message] = binary:split(Rest, [<<?SOH>>], []),
+	{'BodyLength', BodyLength} = field_parse(Second),
 	%% Calculate the total length of the message, minus the 'CheckSum' field
-	TotalMessageLength = Length + length(binary_to_list(First)) + length(binary_to_list(Second)) + 2, %%2 x SOH
+	MessageLength = BodyLength + length(binary_to_list(First)) + length(binary_to_list(Second)) + 2, %%2 x SOH
+        TotalMessageLength = MessageLength + 6
 	%io:format("TotalMessageLength = ~p~n", [TotalMessageLength]),
 	%% The rest of the message we have to parse
 	%%MessageBody = binary:part(Message, 0, Length),
 	%% Validate the checksum
-	{'CheckSum', Sum} = field_parse(binary:part(Message, Length, 6)), %%the length of the checksum field is always 6
+	%%{'CheckSum', Sum} = field_parse(binary:part(Message, Length, 6)), %%the length of the checksum field is always 6
 	%io:format("Sum = ~p~n", [Sum]),
-	%io:format("Sum2 = ~p~n", [check_sum(binary:part(Data, 0, TotalMessageLength))])
+	%<<CheckSumData:MessageLength/binary, _/binary>> = <<Data/binary>>,
+	%CheckSum = check_sum(CheckSumData)
 	%% Find the message Type
-	
-	ParsedMessage = lists:map(fun(Elem) -> field_parse(Elem) end, binary:split(binary:part(Data, 0, TotalMessageLength+6), [<<?SOH>>], [global]))
+	%<<Current:TotalMessageLength/binary, _Other/binary>> = <<Data/binary>>,
+	%FieldList = binary:split(Current, [<<?SOH>>], [global]),
+	%ParsedMessage = lists:map(fun(Elem) -> field_parse(Elem) end, FieldList)
+	%binary:split(Current, [<<?SOH>>], [global])
     catch
 	error:Err -> io:format(Err)
     end.
