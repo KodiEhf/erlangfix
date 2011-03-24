@@ -29,20 +29,19 @@ parse(<<Data/binary>>) ->
 	{'BodyLength', BodyLength} = field_parse(Second),
 	%% Calculate the total length of the message, minus the 'CheckSum' field
 	MessageLength = BodyLength + length(binary_to_list(First)) + length(binary_to_list(Second)) + 2, %%2 x SOH
-        TotalMessageLength = MessageLength + 6
+        TotalMessageLength = MessageLength + 6,
 	%io:format("TotalMessageLength = ~p~n", [TotalMessageLength]),
 	%% The rest of the message we have to parse
 	%%MessageBody = binary:part(Message, 0, Length),
 	%% Validate the checksum
 	%%{'CheckSum', Sum} = field_parse(binary:part(Message, Length, 6)), %%the length of the checksum field is always 6
 	%io:format("Sum = ~p~n", [Sum]),
-	%<<CheckSumData:MessageLength/binary, _/binary>> = <<Data/binary>>,
-	%CheckSum = check_sum(CheckSumData)
+	<<CheckSumData:MessageLength/binary, _/binary>> = <<Data/binary>>,
+	CheckSum = check_sum(CheckSumData),
 	%% Find the message Type
-	%<<Current:TotalMessageLength/binary, _Other/binary>> = <<Data/binary>>,
-	%FieldList = binary:split(Current, [<<?SOH>>], [global]),
-	%ParsedMessage = lists:map(fun(Elem) -> field_parse(Elem) end, FieldList)
-	%binary:split(Current, [<<?SOH>>], [global])
+	<<Current:TotalMessageLength/binary, _Other/binary>> = <<Data/binary>>,
+	FieldList = binary:split(Current, [<<?SOH>>], [global]),
+	ParsedMessage = lists:map(fun(Elem) -> field_parse(Elem) end, FieldList)
     catch
 	error:Err -> io:format(Err)
     end.
