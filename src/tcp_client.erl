@@ -73,6 +73,11 @@ init([{HandlerMod, HandlerArgs}, Parser, Options]) ->
 					       parser = {Parser, Method}} = State) ->
     Data0 = <<Acc/binary, Data/binary>>,
     case Parser:Method(Data0) of
+	{ok, Messages, Rest} when is_list(Messages) ->
+	    lists:foreach(fun(Message) ->
+				  gen_event:notify(MgrPid, {message, Message})
+			  end, Messages),
+	    {next_state, 'WAITING_FOR_MESSAGE', State#state{acc=Rest}, ?TIMEOUT};
 	{ok, Message, Rest} ->
 	    gen_event:notify(MgrPid, {message, Message}),
 	    {next_state, 'WAITING_FOR_MESSAGE', State#state{acc=Rest}, ?TIMEOUT};
