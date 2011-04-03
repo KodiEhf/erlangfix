@@ -1,2 +1,4 @@
 *~
 .#*
+.agner.config
+deps/ebin/
