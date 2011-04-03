@@ -3,6 +3,7 @@
   {description, ""},
   {vsn, "1"},
   {registered, []},
+  {agner, [{requires, ["cowboy","proper"]}]},
   {applications, [
                   kernel,
                   stdlib
