@@ -1,0 +1,3 @@
+-opaque socket() :: term().
+-type handler() :: {Module::module(), Args::[term()]}.
+-type parser() :: {Module::module(), Method::atom()}.

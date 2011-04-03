@@ -2,3 +2,7 @@
 .#*
 .agner.config
 deps/ebin/
+ebin/
+deps/PLACEHOLDER
+deps/oneshot
+deps/proper
