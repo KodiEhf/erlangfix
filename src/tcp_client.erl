@@ -102,13 +102,13 @@ handle_sync_event(_Event, _From, StateName, StateData) ->
 handle_info({socket_ready, Socket} = Incoming, StateName, State) when is_port(Socket) ->
     % Flow control: enable forwarding of next TCP message
     inet:setopts(Socket, [{active, once}]),
-    fix_client_fsm:StateName(Incoming, State);
+    ?MODULE:StateName(Incoming, State);
 
 %% @doc
 %% Incoming data!
 %% @end
 handle_info({tcp, Socket, Data}, StateName, State) when is_port(Socket) ->
-    fix_client_fsm:StateName({data, Data}, State);
+    ?MODULE:StateName({data, Data}, State);
 
 handle_info(_Info, StateName, StateData) ->
     {next_state, StateName, StateData, ?TIMEOUT}.
