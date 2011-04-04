@@ -32,7 +32,8 @@
 -spec send(Client::socket(), Data::term()) ->
 		  ok | {error, Reason::client|term()}.
 send(Client, Data) ->
-    gen_tcp:send(Client, Data).
+    gen_tcp:send(Client, Data),
+    inet:setopts(Client, [{active, once}]).
 
 %% @doc
 %% Start the FSM. This will also create a event manager just for this user,
@@ -71,7 +72,7 @@ init([{HandlerMod, HandlerArgs}, Parser, Options]) ->
 %% @end
 'WAITING_FOR_MESSAGE'({data, Data}, #state{user_event_mgr = MgrPid, acc = Acc,
 					       parser = {Parser, Method}} = State) ->
-    Data0 = <<Acc/binary, Data/binary>>,
+    Data0 = <<Data/binary, Acc/binary>>,
     case Parser:Method(Data0) of
 	{ok, Messages, Rest} when is_list(Messages) ->
 	    lists:foreach(fun(Message) ->
