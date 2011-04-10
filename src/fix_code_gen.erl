@@ -12,7 +12,18 @@ main() ->
 %process_fields should return 2 strings,
 %one for parsing fields and the other for parsing enums 
 process_content([#xmlElement{name=fields, content=Content, attributes=Attributes} | Rest], Level) ->
-    lists:map(fun(C) -> process_field(C) end, Content);
+    lists:map(fun(C) -> process_field(C) end, Content),
+    process_content(Rest, Level);
+
+%%bæta við process_content fyrir components, vegna repeating groups
+
+process_content([#xmlElement{name=header, content=Content, attributes=Attributes} | Rest], Level) ->
+    %%TODO create validation function for header, body, and trailer
+    %%Repeating Groups
+    %%DataType validation
+    %%Parse should return {ok, Message} or {error, Reason}
+    lists:map(fun(C) -> io:format("~p~n",[C]) end, Content), 
+    process_content(Rest, Level);
 
 process_content([#xmlElement{name=Name, content=Content, attributes=Attributes} | Rest], Level) ->
     %io:format("conent is xmlElement at level ~p, name is ~p~n", [Level, Name]),
@@ -38,22 +49,22 @@ generate_field_parse(#xmlElement{name=field, content=Content, attributes=Attribu
     [#xmlAttribute{value=Name, name=name}] = [ Y || Y <- Attributes, Y#xmlAttribute.name=:=name ],
     [#xmlAttribute{value=Type, name=type}] = [ Z || Z <- Attributes, Z#xmlAttribute.name=:=type ],
 
-    io:format("field_parse(<<\"~s=\", Value/binary>>) -> ~n", [Number]),
+    io:format("field_parse([<<\"~s=\", Value/binary>> | Rest]) -> ~n", [Number]),
     case length(Content) > 0 of
 	true -> io:format("Val = case Value of~n"),  
 		lists:map(fun(Elem) -> generate_enum_parse(Elem) end, Content),
 		io:format("_ -> unknown~n"),
 		io:format("end,~n"),
-		io:format("{'~s', Val};~n", [Name]);
+		io:format("[{'~s', Val} | field_parse(Rest)];~n", [Name]);
 	false ->
 	    case Type of
-		"LENGTH" -> io:format("{'~s', to_int(Value)};~n", [Name]);
-		"INT" -> io:format("{'~s', to_int(Value)};~n", [Name]);
-		"SEQNUM" -> io:format("{'~s', to_int(Value)};~n", [Name]);
-		"PRICE" -> io:format("{'~s', to_float(Value)};~n", [Name]);
-		"CURRENCY" -> io:format("{'~s', to_float(Value)};~n", [Name]);
-		"QTY" -> io:format("{'~s', to_float(Value)};~n", [Name]);
-		_ -> io:format("{'~s', Value};~n", [Name])
+		"LENGTH" -> io:format("[{'~s', to_int(Value)} | field_parse(Rest)];~n", [Name]);
+		"INT" -> io:format("[{'~s', to_int(Value)} | field_parse(Rest)];~n", [Name]);
+		"SEQNUM" -> io:format("[{'~s', to_int(Value)} | field_parse(Rest)];~n", [Name]);
+		"PRICE" -> io:format("[{'~s', to_float(Value)} | field_parse(Rest)];~n", [Name]);
+		"CURRENCY" -> io:format("[{'~s', to_float(Value)} | field_parse(Rest)];~n", [Name]);
+		"QTY" -> io:format("[{'~s', to_float(Value)} | field_parse(Rest)];~n", [Name]);
+		_ -> io:format("[{'~s', Value} | field_parse(Rest)];~n", [Name])
 	    end
     end.
    		      
@@ -62,10 +73,6 @@ generate_enum_parse(#xmlElement{name=Name, content=Content, attributes=Attribute
     [A2] = [ Y || Y <- Attributes, Y#xmlAttribute.name=:=description ],
     io:format("<<\"~s\">> -> '~s'; ~n", [A1#xmlAttribute.value, A2#xmlAttribute.value]);
 generate_enum_parse(_) -> "".
-
-
-    
-    
 
 process_attribute([]) ->
     void;

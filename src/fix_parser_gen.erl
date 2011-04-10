@@ -8,33 +8,25 @@ main() ->
    io:format("conent.length is ~p~n", [length(Content)]),
    process_content(Content, Doc).
 
+%%Process all /fix/fields/field tags
 process_content([#xmlElement{name=fields, content=Content, attributes=Attributes} | Rest], Doc) ->  
     io:format("tag is ~p~n", [fields]),
     lists:map(fun(C) -> generate_field_parse(C, Doc) end, Content);
-
+%%All other tags are ignored
 process_content([Other | Rest], Doc) -> process_content(Rest, Doc).
 
-get_field_attributes(#xmlElement{name=field, attributes=Attributes}) ->
-    [#xmlAttribute{value=Number, name=number}] = [ X || X <- Attributes, X#xmlAttribute.name=:=number ],
-    [#xmlAttribute{value=Name, name=name}] = [ Y || Y <- Attributes, Y#xmlAttribute.name=:=name ],
-    [#xmlAttribute{value=Type, name=type}] = [ Z || Z <- Attributes, Z#xmlAttribute.name=:=type ],
-    {Name, Number, Type}.
-
-get_attribute(#xmlElement{name=field, content=Content, attributes=Attributes}, Name) ->
-    [#xmlAttribute{value=Value, name=Name}] = [ X || X <- Attributes, X#xmlAttribute.name=:=Name ],
-    Value.
-
+%process all xmlEmlements with name field
 generate_field_parse(Elem = #xmlElement{name=field, content=Content, attributes=Attributes}, Doc) ->
     {Name, Number, Type} = get_field_attributes(Elem),
     %check if the field is a group or a simple element
     case get_group_def(Name, Doc) of
-	[] -> ok;%generate_field(Content, Number, Name, Type);
-	[Group | Groups] -> generate_group(Number, Group, Doc)
+	[] -> generate_field(Content, Number, Name, Type); %the field is a simple field
+	[Group | Groups] -> generate_group(Number, Group, Doc) %the field is a group
     end;
-
+%other elements are ignored
 generate_field_parse(Other, Doc) -> ok.
 
-	    
+%Generate code for simple fields	    
 generate_field(Content, Number, Name, Type) ->
     io:format("field_parse([<<\"~s=\", Value/binary>> | Rest]) -> ~n", [Number]),
     case length(Content) > 0 of
@@ -42,7 +34,7 @@ generate_field(Content, Number, Name, Type) ->
 		lists:map(fun(Elem) -> generate_enum_parse(Elem) end, Content),
 		io:format("_ -> unknown~n"),
 		io:format("end,~n"),
-		io:format("{'~s', Val};~n", [Name]);
+		io:format("[{'~s', Value} | field_parse(Rest)];~n", [Name]);
 	false ->
 	    case Type of
 		"LENGTH" -> io:format("{'~s', to_int(Value)};~n", [Name]);
@@ -51,10 +43,11 @@ generate_field(Content, Number, Name, Type) ->
 		"PRICE" -> io:format("{'~s', to_float(Value)};~n", [Name]);
 		"CURRENCY" -> io:format("{'~s', to_float(Value)};~n", [Name]);
 		"QTY" -> io:format("{'~s', to_float(Value)};~n", [Name]);
-		_ -> io:format("{'~s', Value};~n", [Name])
+		_ -> io:format("[{'~s', Value} | field_parse(Rest)];~n", [Name])
 	    end
     end.
 
+%Generate code for repeating groups
 generate_group(Number, #xmlElement{name=group, content=Content, attributes=Attributes}, Doc) ->
     io:format("field_parse([<<\"~s=\", Value/binary>> | Rest]) -> ~n", [Number]),
     io:format("NumOfGroupItems = list_to_integer(binary_to_list(Value))~n"),
@@ -65,10 +58,14 @@ generate_group(Number, #xmlElement{name=group, content=Content, attributes=Attri
 
     io:format("Group = fun~n"),
     generate_group_fun(FirstFieldElement, true, Doc),
+
+    lists:map(fun (Elem) -> generate_group_fun(Elem, false, Doc) end, tl(AllFieldsInGroup)),
 	       
-    io:format("(_F, 0, Result, Rest) -> {Result, Rest}"),
-    io:format("end~n"),
-    io:format("Group is ~p~n", [Content]).
+    io:format("(_F, 0, Result, Rest) -> {Result, Rest}~n"),
+    io:format("end,~n"),
+    io:format("{Result, NewRest} = Group(Group, NumOfGroupItems, Rest},~n"),
+    io:format("[Result | field_parse(NewRest)];").
+    %io:format("Group is ~p~n", [Content]).
 
 generate_group_fun(Elem, Count, Doc) ->
     FieldName = get_attribute(Elem, name),
@@ -77,15 +74,26 @@ generate_group_fun(Elem, Count, Doc) ->
     io:format("(F, Count, Result, [Field = <<\"~p=\", V/binary>> | Rest]) ->~n", [Number]),
     case Count of
 	true -> io:format("F(F, Count-1, [parse_field(Field) | Result], Rest);~n");
-	false -> io:format("F(F, Count-1, [parse_field(Field) | Result], Rest);~n")
+	false -> io:format("F(F, Count, [parse_field(Field) | Result], Rest);~n")
     end.
-	    
 
+%Generate code for enum values
 generate_enum_parse(#xmlElement{name=_Name, content=_Content, attributes=Attributes}) ->
     [A1] = [ X || X <- Attributes, X#xmlAttribute.name=:=enum ],
     [A2] = [ Y || Y <- Attributes, Y#xmlAttribute.name=:=description ],
     io:format("<<\"~s\">> -> '~s'; ~n", [A1#xmlAttribute.value, A2#xmlAttribute.value]);
 generate_enum_parse(_) -> "".
+
+% Helpers
+get_field_attributes(#xmlElement{name=field, attributes=Attributes}) ->
+    [#xmlAttribute{value=Number, name=number}] = [ X || X <- Attributes, X#xmlAttribute.name=:=number ],
+    [#xmlAttribute{value=Name, name=name}] = [ Y || Y <- Attributes, Y#xmlAttribute.name=:=name ],
+    [#xmlAttribute{value=Type, name=type}] = [ Z || Z <- Attributes, Z#xmlAttribute.name=:=type ],
+    {Name, Number, Type}.
+
+get_attribute(#xmlElement{name=field, content=Content, attributes=Attributes}, Name) ->
+    [#xmlAttribute{value=Value, name=Name}] = [ X || X <- Attributes, X#xmlAttribute.name=:=Name ],
+    Value.
 
 get_group_def(Name, Doc) ->
     %%{Doc, _} = xmerl_scan:file("FIX42.xml"),
