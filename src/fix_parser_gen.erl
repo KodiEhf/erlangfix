@@ -10,7 +10,7 @@ main() ->
 
 %%Process all /fix/fields/field tags
 process_content([#xmlElement{name=fields, content=Content, attributes=Attributes} | Rest], Doc) ->  
-    io:format("tag is ~p~n", [fields]),
+    %io:format("tag is ~p~n", [fields]),
     lists:map(fun(C) -> generate_field_parse(C, Doc) end, Content);
 %%All other tags are ignored
 process_content([Other | Rest], Doc) -> process_content(Rest, Doc).
@@ -34,15 +34,15 @@ generate_field(Content, Number, Name, Type) ->
 		lists:map(fun(Elem) -> generate_enum_parse(Elem) end, Content),
 		io:format("_ -> unknown~n"),
 		io:format("end,~n"),
-		io:format("[{'~s', Value} | field_parse(Rest)];~n", [Name]);
+		io:format("[{'~s', Val} | field_parse(Rest)];~n", [Name]);
 	false ->
 	    case Type of
-		"LENGTH" -> io:format("{'~s', to_int(Value)};~n", [Name]);
-		"INT" -> io:format("{'~s', to_int(Value)};~n", [Name]);
-		"SEQNUM" -> io:format("{'~s', to_int(Value)};~n", [Name]);
-		"PRICE" -> io:format("{'~s', to_float(Value)};~n", [Name]);
-		"CURRENCY" -> io:format("{'~s', to_float(Value)};~n", [Name]);
-		"QTY" -> io:format("{'~s', to_float(Value)};~n", [Name]);
+		"LENGTH" -> io:format("[{'~s', to_int(Value)} | field_parse(Rest)];~n", [Name]);
+		"INT" -> io:format("[{'~s', to_int(Value)} | field_parse(Rest)];~n", [Name]);
+		"SEQNUM" -> io:format("[{'~s', to_int(Value)} | field_parse(Rest)];~n", [Name]);
+		"PRICE" -> io:format("[{'~s', to_float(Value)} | field_parse(Rest)];~n", [Name]);
+		"CURRENCY" -> io:format("[{'~s', to_float(Value)} | field_parse(Rest)];~n", [Name]);
+		"QTY" -> io:format("[{'~s', to_float(Value)} | field_parse(Rest)];~n", [Name]);
 		_ -> io:format("[{'~s', Value} | field_parse(Rest)];~n", [Name])
 	    end
     end.
@@ -50,7 +50,7 @@ generate_field(Content, Number, Name, Type) ->
 %Generate code for repeating groups
 generate_group(Number, #xmlElement{name=group, content=Content, attributes=Attributes}, Doc) ->
     io:format("field_parse([<<\"~s=\", Value/binary>> | Rest]) -> ~n", [Number]),
-    io:format("NumOfGroupItems = list_to_integer(binary_to_list(Value))~n"),
+    io:format("NumOfGroupItems = list_to_integer(binary_to_list(Value)),~n"),
     
     AllFieldsInGroup = [ X || X <- Content, X#xmlElement.name=:=field],
 
@@ -61,20 +61,20 @@ generate_group(Number, #xmlElement{name=group, content=Content, attributes=Attri
 
     lists:map(fun (Elem) -> generate_group_fun(Elem, false, Doc) end, tl(AllFieldsInGroup)),
 	       
-    io:format("(_F, 0, Result, Rest) -> {Result, Rest}~n"),
+    io:format("(_F, 0, Result, Tail) -> {Result, Tail}~n"),
     io:format("end,~n"),
-    io:format("{Result, NewRest} = Group(Group, NumOfGroupItems, Rest},~n"),
-    io:format("[Result | field_parse(NewRest)];").
+    io:format("{Result, NewRest} = Group(Group, NumOfGroupItems, Rest),~n"),
+    io:format("[Result | field_parse(NewRest)];~n").
     %io:format("Group is ~p~n", [Content]).
 
 generate_group_fun(Elem, Count, Doc) ->
     FieldName = get_attribute(Elem, name),
     [FieldDef] = get_field_def(FieldName, Doc),
     {_Name, Number, _Type} = get_field_attributes(FieldDef),
-    io:format("(F, Count, Result, [Field = <<\"~p=\", V/binary>> | Rest]) ->~n", [Number]),
+    io:format("(F, Count, Result, [Field = <<\"~s=\", _V/binary>> | Tail]) ->~n", [Number]),
     case Count of
-	true -> io:format("F(F, Count-1, [parse_field(Field) | Result], Rest);~n");
-	false -> io:format("F(F, Count, [parse_field(Field) | Result], Rest);~n")
+	true -> io:format("F(F, Count-1, [field_parse(Field) | Result], Tail);~n");
+	false -> io:format("F(F, Count, [field_parse(Field) | Result], Tail);~n")
     end.
 
 %Generate code for enum values
@@ -97,7 +97,7 @@ get_attribute(#xmlElement{name=field, content=Content, attributes=Attributes}, N
 
 get_group_def(Name, Doc) ->
     %%{Doc, _} = xmerl_scan:file("FIX42.xml"),
-    io:format("/fix/messages/message/group[@name='"++Name++"']~n"),
+    %%io:format("/fix/messages/message/group[@name='"++Name++"']~n"),
     xmerl_xpath:string("/fix/messages/message/group[@name='"++Name++"']", Doc).
 
 get_field_def(Name, Doc) ->
