@@ -6,82 +6,123 @@ main() ->
     {#xmlElement{name=_Name, content=Content}, _} = xmerl_scan:file("FIX42.xml"),
     io:format("conent.length is ~p~n", [length(Content)]),
     %io:format("conent is ~p~n", [Content]).
-    process_content(Content, 0).
+
+    {ok, FileDescriptor} = file:open("output.txt", [write]), 
+    %% io:format(FileDescriptor, "[color=red]~w, ~w, ~w, ~w[/color]~n", 
+    %%     [R1#person.name, R1#person.surname, R1#person.age, R1#person.interests]), 
+    process_content(Content, FileDescriptor),
+    file:close(FileDescriptor).
 
 %processes all child nodes of the 'fields' node
 %process_fields should return 2 strings,
 %one for parsing fields and the other for parsing enums 
-process_content([#xmlElement{name=fields, content=Content, attributes=Attributes} | Rest], Level) ->
-    lists:map(fun(C) -> process_field(C) end, Content),
-    process_content(Rest, Level);
+process_content([#xmlElement{name=fields, content=Content, attributes=_Attributes} | Rest], FD) ->
+    lists:map(fun(C) -> process_field(C, FD) end, Content),
+    process_content(Rest, FD);
 
 %%bæta við process_content fyrir components, vegna repeating groups
 
-process_content([#xmlElement{name=header, content=Content, attributes=Attributes} | Rest], Level) ->
+process_content([#xmlElement{name=header, content=Content, attributes=_Attributes} = Element | Rest], FD) ->
     %%TODO create validation function for header, body, and trailer
     %%Repeating Groups
     %%DataType validation
-    %%Parse should return {ok, Message} or {error, Reason}
-    lists:map(fun(C) -> io:format("~p~n",[C]) end, Content), 
-    process_content(Rest, Level);
+    %%Parse should return {ok, Message} or {error, Reason},
+    generate_validator(Element, FD),
+    process_content(Rest, FD);
 
-process_content([#xmlElement{name=Name, content=Content, attributes=Attributes} | Rest], Level) ->
-    %io:format("conent is xmlElement at level ~p, name is ~p~n", [Level, Name]),
-    process_attribute(Attributes),
-    process_content(Content, Level+1),
-    process_content(Rest, Level);
+process_content([#xmlElement{name=trailer, content=Content, attributes=_Attributes} = Element | Rest], FD) ->
+    generate_validator(Element, FD),
+    process_content(Rest, FD);
 
-process_content([#xmlText{value=Value} | Rest], Level) -> 
-    %io:format("conent is xmlText, Value is ~p~n", [Value]), 
-    process_content(Rest, Level);
-process_content([], Level) -> void;
-process_content(Other, Level) ->  io:format("conent is ??  ~p~n", [Other]).
+process_content([#xmlElement{name=messages, content=Content, attributes=_Attributes} = Element | Rest], FD) ->
+    lists:map(fun(C) -> generate_validator(C, FD) end, Content),
+    process_content(Rest, FD);
+
+process_content([#xmlElement{name=Name, content=Content, attributes=_Attributes} | Rest], FD) ->
+    process_content(Content, FD),
+    process_content(Rest, FD);
+
+process_content([#xmlText{value=Value} | Rest], FD) -> 
+    process_content(Rest, FD);
+process_content([], FD) -> void;
+process_content(Other, FD) ->  io:format("conent is ??  ~p~n", [Other]).
 
 %%%===================================================================
 %%% Handles the parsing of all fields and enum values
 %%%===================================================================
-process_field(Element = #xmlElement{name=field, content=Content, attributes=Attributes}) ->
-    generate_field_parse(Element);
-process_field(_) -> void.
+process_field(Element = #xmlElement{name=field, content=Content, attributes=Attributes}, FD) ->
+    generate_field_parse(Element, FD);
+process_field(_, FD) -> void.
 
-generate_field_parse(#xmlElement{name=field, content=Content, attributes=Attributes}) ->
-    [#xmlAttribute{value=Number, name=number}] = [ X || X <- Attributes, X#xmlAttribute.name=:=number ],
-    [#xmlAttribute{value=Name, name=name}] = [ Y || Y <- Attributes, Y#xmlAttribute.name=:=name ],
-    [#xmlAttribute{value=Type, name=type}] = [ Z || Z <- Attributes, Z#xmlAttribute.name=:=type ],
+generate_field_parse(#xmlElement{name=field, content=Content, attributes=Attributes} = Element, FD) ->
+    Number = get_attribute(Element, number),
+    Name = get_attribute(Element, name),
+    Type = get_attribute(Element, type),
 
-    io:format("field_parse([<<\"~s=\", Value/binary>> | Rest]) -> ~n", [Number]),
+    io:format(FD, "field_parse(<<\"~s=\", Value/binary>>) -> ~n", [Number]),
     case length(Content) > 0 of
-	true -> io:format("Val = case Value of~n"),  
-		lists:map(fun(Elem) -> generate_enum_parse(Elem) end, Content),
-		io:format("_ -> unknown~n"),
-		io:format("end,~n"),
-		io:format("[{'~s', Val} | field_parse(Rest)];~n", [Name]);
+	true -> io:format(FD, "Val = case Value of~n",[]),  
+		lists:map(fun(Elem) -> generate_enum_parse(Elem, FD) end, Content),
+		io:format(FD, "_ -> unknown~n", []),
+		io:format(FD, "end,~n",[]),
+		io:format(FD, "{'~s', Val};~n", [Name]);
 	false ->
 	    case Type of
-		"LENGTH" -> io:format("[{'~s', to_int(Value)} | field_parse(Rest)];~n", [Name]);
-		"INT" -> io:format("[{'~s', to_int(Value)} | field_parse(Rest)];~n", [Name]);
-		"SEQNUM" -> io:format("[{'~s', to_int(Value)} | field_parse(Rest)];~n", [Name]);
-		"PRICE" -> io:format("[{'~s', to_float(Value)} | field_parse(Rest)];~n", [Name]);
-		"CURRENCY" -> io:format("[{'~s', to_float(Value)} | field_parse(Rest)];~n", [Name]);
-		"QTY" -> io:format("[{'~s', to_float(Value)} | field_parse(Rest)];~n", [Name]);
-		_ -> io:format("[{'~s', Value} | field_parse(Rest)];~n", [Name])
+		"LENGTH" -> io:format(FD,"{'~s', to_int(Value)};~n", [Name]);
+		"INT" -> io:format(FD,"{'~s', to_int(Value)};~n", [Name]);
+		"SEQNUM" -> io:format(FD, "{'~s', to_int(Value)};~n", [Name]);
+		"PRICE" -> io:format(FD, "{'~s', to_float(Value)};~n", [Name]);
+		"CURRENCY" -> io:format(FD, "{'~s', to_float(Value)};~n", [Name]);
+		"QTY" -> io:format(FD, "{'~s', to_float(Value)};~n", [Name]);
+		_ -> io:format(FD, "{'~s', Value};~n", [Name])
 	    end
     end.
    		      
-generate_enum_parse(#xmlElement{name=Name, content=Content, attributes=Attributes}) ->
-    [A1] = [ X || X <- Attributes, X#xmlAttribute.name=:=enum ],
-    [A2] = [ Y || Y <- Attributes, Y#xmlAttribute.name=:=description ],
-    io:format("<<\"~s\">> -> '~s'; ~n", [A1#xmlAttribute.value, A2#xmlAttribute.value]);
-generate_enum_parse(_) -> "".
+generate_enum_parse(#xmlElement{name=Name, content=Content, attributes=Attributes} = Element, FD) ->
+    Enum = get_attribute(Element, enum),
+    Description = get_attribute(Element, description),
+    io:format(FD, "<<\"~s\">> -> '~s'; ~n", [Enum, Description]);
+generate_enum_parse(_, FD) -> void.
 
-process_attribute([]) ->
-    void;
-process_attribute([#xmlAttribute{value=Value, name=Name} | Rest]) ->
-    %io:format("xmlAttribute name is ~p value is ~s~n", [Name, Value]),
-    process_attribute(Rest).
+%%%===================================================================
+%%% Handles the parsing of messages, header and trailer
+%%%===================================================================
+generate_validator(#xmlElement{name=header, content=Content, attributes=Attributes} = Element, FD) ->
+    RequiredList = get_required_fields(Element),
+    io:format(FD, "required_header_fields() -> ~n~p.~n", [RequiredList]);
 
-remove_quote(Value) ->
-    NewValue = binary_to_list(iolist_to_binary(Value)),
-    lists:filter(fun(V) -> io:format("V = ~p~n",[V]), V =/= $" end, NewValue).
+generate_validator(#xmlElement{name=trailer, content=Content, attributes=Attributes} = Element, FD) ->
+    RequiredList = get_required_fields(Element),
+    io:format(FD, "required_trailer_fields() -> ~n~p.~n", [RequiredList]);
 
+generate_validator(#xmlElement{name=message, content=Content, attributes=Attributes} = Element, FD) ->
+    RequiredList = get_required_fields(Element),
+    Name = get_attribute(Element, name),
+    io:format(FD, "required_fields('~s') -> ~n~p;~n", [Name, RequiredList]);
 
+generate_validator(_,_) -> ok.
+
+get_required_fields(#xmlElement{name=_, content=Content, attributes=_Attributes} = Element) ->
+    lists:foldl(
+      fun(C = #xmlElement{}, Result) ->
+	      Required = get_attribute(C, required),
+	      Name = get_attribute(C, name),
+	      case Required of
+		  "Y" -> [list_to_atom(Name) | Result];
+		  "N" -> Result
+	      end;
+	 (_, Result) -> Result
+      end, [], Content).
+
+%%%===================================================================
+%%% Helpers
+%%%===================================================================
+get_attribute(#xmlElement{name=_, content=Content, attributes=Attributes}, Name) ->
+    [#xmlAttribute{value=Value, name=Name}] = [ X || X <- Attributes, X#xmlAttribute.name=:=Name ],
+    Value.
+
+get_field_def(Name, Doc) ->
+    xmerl_xpath:string("/fix/fields/field[@name='"++Name++"']", Doc).
+
+get_message_type(Value, Doc) ->
+    xmerl_xpath:string("/fix/fields/field[@name='MsgType']/value[@enum='"++Value++"']", Doc).

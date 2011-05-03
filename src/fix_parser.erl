@@ -1828,4 +1828,20 @@ to_int(Binary) ->
     list_to_integer(binary_to_list(Binary)).
 
 to_float(Binary) -> Binary.
-						%list_to_float(binary_to_list(Binary)).
+
+%list_to_float(binary_to_list(Binary)).
+
+validate(Message) ->
+    validate_message(Message, required_header_fields),
+    validate_message(Message, required_trailer_fields).
+
+validate_message(Message, Required) ->
+    lists:map(
+      fun(F) -> 
+	      try
+		  [{F, Val}] = proplists:lookup_all(F, Message)
+	      catch
+		  error:Err ->
+		      io:format("Required field ~p missing ~n", F)
+	      end
+      end, Required).
