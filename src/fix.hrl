@@ -8,3 +8,5 @@
 		 'OnBehalfOfSubID', 'OrigSendingTime'}).
 
 -record(trailer, {'CheckSum' }).
+
+-record(fix_message, {msg_type, fields=[]}).
