@@ -5,7 +5,7 @@
 %% Data = <<"8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|">>.
 
 %%<<"8=FIX.4.2|9=65|35=A|49=SERVER|56=CLIENT|34=177|52=20090107-18:15:16|98=0|108=30|10=062|">>
-
+%%8=FIX.4.2|9=0186|35=8|34=1|52=20101119-10:37:46|49=INORD|50=S|56=Y48|57=Y4805|43=Y|122=20101119-06:55:00|6=0.0|11=KODVRSKTKOLJP|14=0|17=0|20=0|37=309|39=0|54=1|55=10771|150=D|151=0|109=Y48|378=1|198=163|10=169|
 %% We need a mapping of integers to tag-names
 %% We know that a message ends with "10=xyz |"
 %% Parse should return a list of "parsed messages" and a binary rest
@@ -13,8 +13,24 @@
 %% length refers to the message length up to checksum field
 
 get_data() ->
-    Data = <<"8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|">>,
+    Data = <<"8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=0186|35=8|34=1|52=20101119-10:37:46|49=INORD|50=S|56=Y48|57=Y4805|43=Y|122=20101119-06:55:00|6=0.0|11=KODVRSKTKOLJP|14=0|17=0|20=0|37=309|39=0|54=1|55=10771|150=D|151=0|109=Y48|378=1|198=163|10=169|">>,
     binary:replace(Data, <<"|">>, <<2#01>>,[global]).
+
+test() ->
+    {ok, FD} = file:open("log.fix", [read, binary]),
+    read_from_file(FD, 0, <<>>),
+    file:close(FD).
+
+read_from_file(FD, Index, Rest)->
+    case file:pread(FD, Index, 1000) of
+	{ok, Data} -> 
+	    {ok, _Result, NewRest} = parse(<<Rest/binary,Data/binary>>),
+	    read_from_file(FD, Index+1000, NewRest);
+	eof ->
+	    io:format("eof file closed~n");
+	{error, Reason} ->
+	    io:format("error ~p~n", [Reason])
+    end.
 
 p(<<_Data/binary>>, 0) ->
     ok;
@@ -50,19 +66,56 @@ parse_loop(<<Data/binary>>, Result) ->
 	%% The message part used to verify the checksum
 	<<CheckSumData:MessageLength/binary, _/binary>> = <<Data/binary>>,
 	CheckSum = check_sum(CheckSumData),
-	%io:format("message checksum is ~p, Calculated CheckSum is ~p~n", [Sum, CheckSum]),
+        io:format("message checksum is ~p, Calculated CheckSum is ~p~n", [Sum, CheckSum]),
 	%% Validate the message
 	validate(ParsedMessage),
 	%% Return the parsed message, and the rest of the buffer
 	parse_loop(RestOfData, [#fix_message{msg_type=proplists:get_value('MsgType', ParsedMessage), 
 					     fields=ParsedMessage}|Result])
     catch
-	error: _Err -> io:format("~p~n", [_Err]), {ok, Result, Data}
+	error: _Err ->  {ok, Result, Data}
     end.
 
+check_sum(<<Message/binary>>) ->
+    List = binary_to_list(Message),
+    lists:sum(List) rem 256.
+
+to_int(Binary) ->
+    list_to_integer(binary_to_list(Binary)).
+
+to_float(Binary) -> Binary.
+
+%list_to_float(binary_to_list(Binary)).
+
+validate(Message) ->
+    validate_message(Message, required_header_fields()),
+    validate_message(Message, required_trailer_fields()).
+
+validate_message(Message, Required) ->
+    lists:map(
+      fun(F) -> 
+	      try
+		  [{F, _Val}] = proplists:lookup_all(F, Message)
+	      catch
+		  error:_Err -> ok
+		      %io:format("Required field ~p missing ~n", [F])
+	      end
+      end, Required).
+
+
+
 required_header_fields() -> 
-['SendingTime','MsgSeqNum','TargetCompID','SenderCompID','MsgType',
- 'BodyLength','BeginString'].
+['TargetSubID','TargetCompID','SendingTime','SenderSubID','SenderCompID',
+ 'MsgSeqNum','MsgType','BodyLength','BeginString'].
+required_trailer_fields() -> 
+['CheckSum'].
+
+required_fields('Heartbeat') -> 
+[];
+required_fields('Logon') -> 
+['HeartBtInt','EncryptMethod'];
+required_fields('TestRequest') -> 
+['TestReqID'];
 required_fields('ResendRequest') -> 
 ['EndSeqNo','BeginSeqNo'];
 required_fields('Reject') -> 
@@ -71,94 +124,18 @@ required_fields('SequenceReset') ->
 ['NewSeqNo'];
 required_fields('Logout') -> 
 [];
-required_fields('IndicationofInterest') -> 
-['IOIShares','Side','Symbol','IOITransType','IOIid'];
-required_fields('Advertisement') -> 
-['Shares','AdvSide','Symbol','AdvTransType','AdvId'];
-required_fields('ExecutionReport') -> 
-['AvgPx','CumQty','LeavesQty','Side','Symbol','OrdStatus','ExecType',
- 'ExecTransType','ExecID','OrderID'];
-required_fields('OrderCancelReject') -> 
-['CxlRejResponseTo','OrdStatus','OrigClOrdID','ClOrdID','OrderID'];
-required_fields('Logon') -> 
-['HeartBtInt','EncryptMethod'];
-required_fields('News') -> 
-['LinesOfText','Headline'];
-required_fields('Email') -> 
-['LinesOfText','Subject','EmailType','EmailThreadID'];
 required_fields('NewOrderSingle') -> 
-['OrdType','TransactTime','Side','Symbol','HandlInst','ClOrdID'];
-required_fields('NewOrderList') -> 
-['NoOrders','TotNoOrders','BidType','ListID'];
-required_fields('OrderCancelRequest') -> 
-['TransactTime','Side','Symbol','ClOrdID','OrigClOrdID'];
+['TransactTime','Symbol','Side','OrdType','HandlInst','ClOrdID'];
+required_fields('ExecutionReport') -> 
+['LeavesQty','ExecType','Side','OrdStatus','OrderID','ExecTransType','ExecID',
+ 'CumQty','AvgPx'];
 required_fields('OrderCancelReplaceRequest') -> 
-['OrdType','TransactTime','Side','Symbol','HandlInst','ClOrdID','OrigClOrdID'];
-required_fields('OrderStatusRequest') -> 
-['Side','Symbol','ClOrdID'];
-required_fields('Allocation') -> 
-['TradeDate','AvgPx','Shares','Symbol','Side','AllocTransType','AllocID'];
-required_fields('ListCancelRequest') -> 
-['TransactTime','ListID'];
-required_fields('ListExecute') -> 
-['TransactTime','ListID'];
-required_fields('ListStatusRequest') -> 
-['ListID'];
-required_fields('ListStatus') -> 
-['NoOrders','TotNoOrders','RptSeq','ListOrderStatus','NoRpts',
- 'ListStatusType','ListID'];
-required_fields('AllocationACK') -> 
-['AllocStatus','TradeDate','AllocID'];
-required_fields('DontKnowTrade') -> 
-['Side','Symbol','DKReason','ExecID','OrderID'];
-required_fields('QuoteRequest') -> 
-['NoRelatedSym','QuoteReqID'];
-required_fields('Quote') -> 
-['Symbol','QuoteID'];
-required_fields('SettlementInstructions') -> 
-['TransactTime','AllocAccount','SettlInstSource','SettlInstMode',
- 'SettlInstRefID','SettlInstTransType','SettlInstID'];
-required_fields('MarketDataRequest') -> 
-['NoRelatedSym','NoMDEntryTypes','MarketDepth','SubscriptionRequestType',
- 'MDReqID'];
-required_fields('MarketDataSnapshotFullRefresh') -> 
-['NoMDEntries','Symbol'];
-required_fields('MarketDataIncrementalRefresh') -> 
-['NoMDEntries'];
-required_fields('MarketDataRequestReject') -> 
-['MDReqID'];
-required_fields('QuoteCancel') -> 
-['NoQuoteEntries','QuoteCancelType','QuoteID'];
-required_fields('QuoteStatusRequest') -> 
-['Symbol'];
-required_fields('QuoteAcknowledgement') -> 
-['QuoteAckStatus'];
-required_fields('SecurityDefinitionRequest') -> 
-['SecurityRequestType','SecurityReqID'];
-required_fields('SecurityDefinition') -> 
-['TotalNumSecurities','SecurityResponseID','SecurityReqID'];
-required_fields('SecurityStatusRequest') -> 
-['SubscriptionRequestType','Symbol','SecurityStatusReqID'];
-required_fields('SecurityStatus') -> 
-['Symbol'];
-required_fields('TradingSessionStatusRequest') -> 
-['SubscriptionRequestType','TradSesReqID'];
-required_fields('TradingSessionStatus') -> 
-['TradSesStatus','TradingSessionID'];
-required_fields('MassQuote') -> 
-['NoQuoteSets','QuoteID'];
-required_fields('BusinessMessageReject') -> 
-['BusinessRejectReason','RefMsgType'];
-required_fields('BidRequest') -> 
-['BasisPxType','TradeType','BidType','TotalNumSecurities',
- 'BidRequestTransType','ClientBidID'];
-required_fields('BidResponse') -> 
-['NoBidComponents'];
-required_fields('ListStrikePrice') -> 
-['NoStrikes','TotNoStrikes','ListID'].
-required_trailer_fields() -> 
-['CheckSum'].
-
+['TransactTime','Symbol','Side','OrigClOrdID','OrdType','OrderQty','OrderID',
+ 'HandlInst','ClOrdID'];
+required_fields('OrderCancelRequest') -> 
+['TransactTime','Symbol','Side','OrigClOrdID','OrderQty','OrderID','ClOrdID'];
+required_fields('OrderCancelReject') -> 
+['CxlRejResponseTo','ClientID','OrigClOrdID','OrdStatus','OrderID','ClOrdID'].
 
 
 field_parse(<<"1=", Value/binary>>) -> 
@@ -171,15 +148,15 @@ field_parse(<<"4=", Value/binary>>) ->
 Val = case Value of
 <<"B">> -> 'BUY'; 
 <<"S">> -> 'SELL'; 
-<<"T">> -> 'TRADE'; 
 <<"X">> -> 'CROSS'; 
+<<"T">> -> 'TRADE'; 
 _ -> unknown
 end,
 {'AdvSide', Val};
 field_parse(<<"5=", Value/binary>>) -> 
 Val = case Value of
-<<"C">> -> 'CANCEL'; 
 <<"N">> -> 'NEW'; 
+<<"C">> -> 'CANCEL'; 
 <<"R">> -> 'REPLACE'; 
 _ -> unknown
 end,
@@ -193,7 +170,7 @@ field_parse(<<"8=", Value/binary>>) ->
 field_parse(<<"9=", Value/binary>>) -> 
 {'BodyLength', to_int(Value)};
 field_parse(<<"10=", Value/binary>>) -> 
-{'CheckSum', Value};
+{'CheckSum', to_int(Value)};
 field_parse(<<"11=", Value/binary>>) -> 
 {'ClOrdID', Value};
 field_parse(<<"12=", Value/binary>>) -> 
@@ -216,35 +193,10 @@ field_parse(<<"17=", Value/binary>>) ->
 {'ExecID', Value};
 field_parse(<<"18=", Value/binary>>) -> 
 Val = case Value of
-<<"0">> -> 'STAY_ON_OFFERSIDE'; 
-<<"1">> -> 'NOT_HELD'; 
-<<"2">> -> 'WORK'; 
-<<"3">> -> 'GO_ALONG'; 
-<<"4">> -> 'OVER_THE_DAY'; 
-<<"5">> -> 'HELD'; 
-<<"6">> -> 'PARTICIPATE_DONT_INITIATE'; 
-<<"7">> -> 'STRICT_SCALE'; 
-<<"8">> -> 'TRY_TO_SCALE'; 
-<<"9">> -> 'STAY_ON_BIDSIDE'; 
-<<"A">> -> 'NO_CROSS'; 
-<<"B">> -> 'OK_TO_CROSS'; 
-<<"C">> -> 'CALL_FIRST'; 
-<<"D">> -> 'PERCENT_OF_VOLUME'; 
-<<"E">> -> 'DO_NOT_INCREASE'; 
-<<"F">> -> 'DO_NOT_REDUCE'; 
-<<"G">> -> 'ALL_OR_NONE'; 
-<<"I">> -> 'INSTITUTIONS_ONLY'; 
-<<"L">> -> 'LAST_PEG'; 
-<<"M">> -> 'MID_PRICE_PEG'; 
-<<"N">> -> 'NON_NEGOTIABLE'; 
-<<"O">> -> 'OPENING_PEG'; 
+<<"M">> -> 'MIDPRICE_PEG'; 
+<<"N">> -> 'NONNEGOTIABLE'; 
 <<"P">> -> 'MARKET_PEG'; 
 <<"R">> -> 'PRIMARY_PEG'; 
-<<"S">> -> 'SUSPEND'; 
-<<"T">> -> 'FIXED_PEG_TO_LOCAL_BEST_BID_OR_OFFER_AT_TIME_OF_ORDER'; 
-<<"U">> -> 'CUSTOMER_DISPLAY_INSTRUCTION'; 
-<<"V">> -> 'NETTING'; 
-<<"W">> -> 'PEG_TO_VWAP'; 
 _ -> unknown
 end,
 {'ExecInst', Val};
@@ -287,26 +239,20 @@ field_parse(<<"24=", Value/binary>>) ->
 {'IOIOthSvc', Value};
 field_parse(<<"25=", Value/binary>>) -> 
 Val = case Value of
-<<"H">> -> 'HIGH'; 
 <<"L">> -> 'LOW'; 
 <<"M">> -> 'MEDIUM'; 
+<<"H">> -> 'HIGH'; 
 _ -> unknown
 end,
 {'IOIQltyInd', Val};
 field_parse(<<"26=", Value/binary>>) -> 
 {'IOIRefID', Value};
 field_parse(<<"27=", Value/binary>>) -> 
-Val = case Value of
-<<"L">> -> 'LARGE'; 
-<<"M">> -> 'MEDIUM'; 
-<<"S">> -> 'SMALL'; 
-_ -> unknown
-end,
-{'IOIShares', Val};
+{'IOIShares', Value};
 field_parse(<<"28=", Value/binary>>) -> 
 Val = case Value of
-<<"C">> -> 'CANCEL'; 
 <<"N">> -> 'NEW'; 
+<<"C">> -> 'CANCEL'; 
 <<"R">> -> 'REPLACE'; 
 _ -> unknown
 end,
@@ -331,56 +277,7 @@ field_parse(<<"33=", Value/binary>>) ->
 field_parse(<<"34=", Value/binary>>) -> 
 {'MsgSeqNum', to_int(Value)};
 field_parse(<<"35=", Value/binary>>) -> 
-Val = case Value of
-<<"0">> -> 'HEARTBEAT'; 
-<<"1">> -> 'TEST_REQUEST'; 
-<<"2">> -> 'RESEND_REQUEST'; 
-<<"3">> -> 'REJECT'; 
-<<"4">> -> 'SEQUENCE_RESET'; 
-<<"5">> -> 'LOGOUT'; 
-<<"6">> -> 'INDICATION_OF_INTEREST'; 
-<<"7">> -> 'ADVERTISEMENT'; 
-<<"8">> -> 'EXECUTION_REPORT'; 
-<<"9">> -> 'ORDER_CANCEL_REJECT'; 
-<<"a">> -> 'QUOTE_STATUS_REQUEST'; 
-<<"A">> -> 'LOGON'; 
-<<"B">> -> 'NEWS'; 
-<<"b">> -> 'QUOTE_ACKNOWLEDGEMENT'; 
-<<"C">> -> 'EMAIL'; 
-<<"c">> -> 'SECURITY_DEFINITION_REQUEST'; 
-<<"D">> -> 'ORDER_SINGLE'; 
-<<"d">> -> 'SECURITY_DEFINITION'; 
-<<"E">> -> 'ORDER_LIST'; 
-<<"e">> -> 'SECURITY_STATUS_REQUEST'; 
-<<"f">> -> 'SECURITY_STATUS'; 
-<<"F">> -> 'ORDER_CANCEL_REQUEST'; 
-<<"G">> -> 'ORDER_CANCEL_REPLACE_REQUEST'; 
-<<"g">> -> 'TRADING_SESSION_STATUS_REQUEST'; 
-<<"H">> -> 'ORDER_STATUS_REQUEST'; 
-<<"h">> -> 'TRADING_SESSION_STATUS'; 
-<<"i">> -> 'MASS_QUOTE'; 
-<<"j">> -> 'BUSINESS_MESSAGE_REJECT'; 
-<<"J">> -> 'ALLOCATION'; 
-<<"K">> -> 'LIST_CANCEL_REQUEST'; 
-<<"k">> -> 'BID_REQUEST'; 
-<<"l">> -> 'BID_RESPONSE'; 
-<<"L">> -> 'LIST_EXECUTE'; 
-<<"m">> -> 'LIST_STRIKE_PRICE'; 
-<<"M">> -> 'LIST_STATUS_REQUEST'; 
-<<"N">> -> 'LIST_STATUS'; 
-<<"P">> -> 'ALLOCATION_ACK'; 
-<<"Q">> -> 'DONT_KNOW_TRADE'; 
-<<"R">> -> 'QUOTE_REQUEST'; 
-<<"S">> -> 'QUOTE'; 
-<<"T">> -> 'SETTLEMENT_INSTRUCTIONS'; 
-<<"V">> -> 'MARKET_DATA_REQUEST'; 
-<<"W">> -> 'MARKET_DATA_SNAPSHOT_FULL_REFRESH'; 
-<<"X">> -> 'MARKET_DATA_INCREMENTAL_REFRESH'; 
-<<"Y">> -> 'MARKET_DATA_REQUEST_REJECT'; 
-<<"Z">> -> 'QUOTE_CANCEL'; 
-_ -> unknown
-end,
-{'MsgType', Val};
+{'MsgType', Value};
 field_parse(<<"36=", Value/binary>>) -> 
 {'NewSeqNo', to_int(Value)};
 field_parse(<<"37=", Value/binary>>) -> 
@@ -411,22 +308,6 @@ field_parse(<<"40=", Value/binary>>) ->
 Val = case Value of
 <<"1">> -> 'MARKET'; 
 <<"2">> -> 'LIMIT'; 
-<<"3">> -> 'STOP'; 
-<<"4">> -> 'STOP_LIMIT'; 
-<<"5">> -> 'MARKET_ON_CLOSE'; 
-<<"6">> -> 'WITH_OR_WITHOUT'; 
-<<"7">> -> 'LIMIT_OR_BETTER'; 
-<<"8">> -> 'LIMIT_WITH_OR_WITHOUT'; 
-<<"9">> -> 'ON_BASIS'; 
-<<"A">> -> 'ON_CLOSE'; 
-<<"B">> -> 'LIMIT_ON_CLOSE'; 
-<<"C">> -> 'FOREX_C'; 
-<<"D">> -> 'PREVIOUSLY_QUOTED'; 
-<<"E">> -> 'PREVIOUSLY_INDICATED'; 
-<<"F">> -> 'FOREX_F'; 
-<<"G">> -> 'FOREX_G'; 
-<<"H">> -> 'FOREX_H'; 
-<<"I">> -> 'FUNARI'; 
 <<"P">> -> 'PEGGED'; 
 _ -> unknown
 end,
@@ -437,8 +318,8 @@ field_parse(<<"42=", Value/binary>>) ->
 {'OrigTime', Value};
 field_parse(<<"43=", Value/binary>>) -> 
 Val = case Value of
-<<"N">> -> 'NO'; 
-<<"Y">> -> 'YES'; 
+<<"Y">> -> 'POSSIBLE_DUPLICATE'; 
+<<"N">> -> 'ORIGINAL_TRANSMISSION'; 
 _ -> unknown
 end,
 {'PossDupFlag', Val};
@@ -452,17 +333,16 @@ field_parse(<<"47=", Value/binary>>) ->
 Val = case Value of
 <<"A">> -> 'AGENCY_SINGLE_ORDER'; 
 <<"B">> -> 'SHORT_EXEMPT_TRANSACTION_B'; 
-<<"C">> -> 'PROGRAM_ORDER_NON_INDEX_ARB_FOR_MEMBER_FIRM_ORG'; 
-<<"D">> -> 'PROGRAM_ORDER_INDEX_ARB_FOR_MEMBER_FIRM_ORG'; 
+<<"C">> -> 'PROGRAM_ORDER_NONINDEX_ARB_FOR_MEMBER_FIRMORG'; 
+<<"D">> -> 'PROGRAM_ORDER_INDEX_ARB_FOR_MEMBER_FIRMORG'; 
 <<"E">> -> 'REGISTERED_EQUITY_MARKET_MAKER_TRADES'; 
 <<"F">> -> 'SHORT_EXEMPT_TRANSACTION_F'; 
 <<"H">> -> 'SHORT_EXEMPT_TRANSACTION_H'; 
-<<"I">> -> 'INDIVIDUAL_INVESTOR_SINGLE_ORDER'; 
 <<"J">> -> 'PROGRAM_ORDER_INDEX_ARB_FOR_INDIVIDUAL_CUSTOMER'; 
-<<"K">> -> 'PROGRAM_ORDER_NON_INDEX_ARB_FOR_INDIVIDUAL_CUSTOMER'; 
-<<"L">> -> 'SHORT_EXEMPT_TRANSACTION_FOR_MEMBER_COMPETING_MARKET_MAKER_AFFILIATED_WITH_THE_FIRM_CLEARING_THE_TRADE'; 
+<<"K">> -> 'PROGRAM_ORDER_NONINDEX_ARB_FOR_INDIVIDUAL_CUSTOMER'; 
+<<"L">> -> 'SHORT_EXEMPT_AFFILIATED'; 
 <<"M">> -> 'PROGRAM_ORDER_INDEX_ARB_FOR_OTHER_MEMBER'; 
-<<"N">> -> 'PROGRAM_ORDER_NON_INDEX_ARB_FOR_OTHER_MEMBER'; 
+<<"N">> -> 'PROGRAM_ORDER_NONINDEX_ARB_FOR_OTHER_MEMBER'; 
 <<"O">> -> 'COMPETING_DEALER_TRADES_O'; 
 <<"P">> -> 'PRINCIPAL'; 
 <<"R">> -> 'COMPETING_DEALER_TRADES_R'; 
@@ -470,20 +350,22 @@ Val = case Value of
 <<"T">> -> 'COMPETING_DEALER_TRADES_T'; 
 <<"U">> -> 'PROGRAM_ORDER_INDEX_ARB_FOR_OTHER_AGENCY'; 
 <<"W">> -> 'ALL_OTHER_ORDERS_AS_AGENT_FOR_OTHER_MEMBER'; 
-<<"X">> -> 'SHORT_EXEMPT_TRANSACTION_FOR_MEMBER_COMPETING_MARKET_MAKER_NOT_AFFILIATED_WITH_THE_FIRM_CLEARING_THE_TRADE'; 
-<<"Y">> -> 'PROGRAM_ORDER_NON_INDEX_ARB_FOR_OTHER_AGENCY'; 
-<<"Z">> -> 'SHORT_EXEMPT_TRANSACTION_FOR_NON_MEMBER_COMPETING_MARKET_MAKER'; 
+<<"X">> -> 'SHORT_EXEMPT_NOT_AFFILIATED'; 
+<<"Y">> -> 'PROGRAM_ORDER_NONINDEX_ARB_FOR_OTHER_AGENCY'; 
+<<"Z">> -> 'SHORT_EXEMPT_NONMEMBER'; 
 _ -> unknown
 end,
 {'Rule80A', Val};
 field_parse(<<"48=", Value/binary>>) -> 
 {'SecurityID', Value};
 field_parse(<<"49=", Value/binary>>) -> 
-{'SenderCompID', Value};
+Val = case Value of
+<<"INORD">> -> 'INORD'; 
+_ -> unknown
+end,
+{'SenderCompID', Val};
 field_parse(<<"50=", Value/binary>>) -> 
 {'SenderSubID', Value};
-field_parse(<<"51=", Value/binary>>) -> 
-{'SendingDate', Value};
 field_parse(<<"52=", Value/binary>>) -> 
 {'SendingTime', Value};
 field_parse(<<"53=", Value/binary>>) -> 
@@ -492,13 +374,8 @@ field_parse(<<"54=", Value/binary>>) ->
 Val = case Value of
 <<"1">> -> 'BUY'; 
 <<"2">> -> 'SELL'; 
-<<"3">> -> 'BUY_MINUS'; 
-<<"4">> -> 'SELL_PLUS'; 
-<<"5">> -> 'SELL_SHORT'; 
-<<"6">> -> 'SELL_SHORT_EXEMPT'; 
 <<"7">> -> 'UNDISCLOSED'; 
 <<"8">> -> 'CROSS'; 
-<<"9">> -> 'CROSS_SHORT'; 
 _ -> unknown
 end,
 {'Side', Val};
@@ -507,7 +384,10 @@ field_parse(<<"55=", Value/binary>>) ->
 field_parse(<<"56=", Value/binary>>) -> 
 {'TargetCompID', Value};
 field_parse(<<"57=", Value/binary>>) -> 
-{'TargetSubID', Value};
+Val = case Value of
+_ -> unknown
+end,
+{'TargetSubID', Val};
 field_parse(<<"58=", Value/binary>>) -> 
 {'Text', Value};
 field_parse(<<"59=", Value/binary>>) -> 
@@ -517,8 +397,9 @@ Val = case Value of
 <<"2">> -> 'AT_THE_OPENING'; 
 <<"3">> -> 'IMMEDIATE_OR_CANCEL'; 
 <<"4">> -> 'FILL_OR_KILL'; 
-<<"5">> -> 'GOOD_TILL_CROSSING'; 
-<<"6">> -> 'GOOD_TILL_DATE'; 
+<<"6">> -> 'GOOD_TILL_TIME'; 
+<<"7">> -> 'AT_THE_CLOSE'; 
+<<"9">> -> 'GOOD_TIL_NEXT_CROSS'; 
 _ -> unknown
 end,
 {'TimeInForce', Val};
@@ -539,13 +420,13 @@ Val = case Value of
 <<"0">> -> 'REGULAR'; 
 <<"1">> -> 'CASH'; 
 <<"2">> -> 'NEXT_DAY'; 
-<<"3">> -> 'T_PLUS_2'; 
-<<"4">> -> 'T_PLUS_3'; 
-<<"5">> -> 'T_PLUS_4'; 
+<<"3">> -> 'TPLUS2'; 
+<<"4">> -> 'TPLUS3'; 
+<<"5">> -> 'TPLUS4'; 
 <<"6">> -> 'FUTURE'; 
 <<"7">> -> 'WHEN_ISSUED'; 
 <<"8">> -> 'SELLERS_OPTION'; 
-<<"9">> -> 'T_PLUS_5'; 
+<<"9">> -> 'TPLUS5'; 
 _ -> unknown
 end,
 {'SettlmntTyp', Val};
@@ -583,11 +464,17 @@ field_parse(<<"74=", Value/binary>>) ->
 field_parse(<<"75=", Value/binary>>) -> 
 {'TradeDate', Value};
 field_parse(<<"76=", Value/binary>>) -> 
-{'ExecBroker', Value};
+Val = case Value of
+<<"BOOK">> -> 'BOOK'; 
+<<"SCAN">> -> 'SCAN'; 
+<<"STGY">> -> 'STGY'; 
+_ -> unknown
+end,
+{'ExecBroker', Val};
 field_parse(<<"77=", Value/binary>>) -> 
 Val = case Value of
-<<"C">> -> 'CLOSE'; 
 <<"O">> -> 'OPEN'; 
+<<"C">> -> 'CLOSE'; 
 _ -> unknown
 end,
 {'OpenClose', Val};
@@ -601,10 +488,10 @@ field_parse(<<"81=", Value/binary>>) ->
 Val = case Value of
 <<"0">> -> 'REGULAR'; 
 <<"1">> -> 'SOFT_DOLLAR'; 
-<<"2">> -> 'STEP_IN'; 
-<<"3">> -> 'STEP_OUT'; 
-<<"4">> -> 'SOFT_DOLLAR_STEP_IN'; 
-<<"5">> -> 'SOFT_DOLLAR_STEP_OUT'; 
+<<"2">> -> 'STEPIN'; 
+<<"3">> -> 'STEPOUT'; 
+<<"4">> -> 'SOFTDOLLAR_STEPIN'; 
+<<"5">> -> 'SOFTDOLLAR_STEPOUT'; 
 <<"6">> -> 'PLAN_SPONSOR'; 
 _ -> unknown
 end,
@@ -664,21 +551,10 @@ field_parse(<<"95=", Value/binary>>) ->
 field_parse(<<"96=", Value/binary>>) -> 
 {'RawData', Value};
 field_parse(<<"97=", Value/binary>>) -> 
-Val = case Value of
-<<"N">> -> 'NO'; 
-<<"Y">> -> 'YES'; 
-_ -> unknown
-end,
-{'PossResend', Val};
+{'PossResend', Value};
 field_parse(<<"98=", Value/binary>>) -> 
 Val = case Value of
-<<"0">> -> 'NONE'; 
-<<"1">> -> 'PKCS'; 
-<<"2">> -> 'DES'; 
-<<"3">> -> 'PKCS_DES'; 
-<<"4">> -> 'PGP_DES'; 
-<<"5">> -> 'PGP_DES_MD5'; 
-<<"6">> -> 'PEM_DES_MD5'; 
+<<"0">> -> 'NONE_OTHER'; 
 _ -> unknown
 end,
 {'EncryptMethod', Val};
@@ -691,7 +567,7 @@ Val = case Value of
 <<"0">> -> 'TOO_LATE_TO_CANCEL'; 
 <<"1">> -> 'UNKNOWN_ORDER'; 
 <<"2">> -> 'BROKER_OPTION'; 
-<<"3">> -> 'ORDER_ALREADY_IN_PENDING_CANCEL_OR_PENDING_REPLACE_STATUS'; 
+<<"3">> -> 'ALREADY_PENDING'; 
 _ -> unknown
 end,
 {'CxlRejReason', Val};
@@ -704,7 +580,7 @@ Val = case Value of
 <<"4">> -> 'TOO_LATE_TO_ENTER'; 
 <<"5">> -> 'UNKNOWN_ORDER'; 
 <<"6">> -> 'DUPLICATE_ORDER'; 
-<<"7">> -> 'DUPLICATE_OF_A_VERBALLY_COMMUNICATED_ORDER'; 
+<<"7">> -> 'DUPLICATE_VERBALYES'; 
 <<"8">> -> 'STALE_ORDER'; 
 _ -> unknown
 end,
@@ -720,13 +596,13 @@ Val = case Value of
 <<"P">> -> 'TAKING_A_POSITION'; 
 <<"Q">> -> 'AT_THE_MARKET'; 
 <<"R">> -> 'READY_TO_TRADE'; 
-<<"S">> -> 'PORTFOLIO_SHOW_N'; 
+<<"S">> -> 'PORTFOLIO_SHOWN'; 
 <<"T">> -> 'THROUGH_THE_DAY'; 
 <<"V">> -> 'VERSUS'; 
-<<"W">> -> 'INDICATION'; 
+<<"W">> -> 'INDICATION_WORKING_AWAY'; 
 <<"X">> -> 'CROSSING_OPPORTUNITY'; 
 <<"Y">> -> 'AT_THE_MIDPOINT'; 
-<<"Z">> -> 'PRE_OPEN'; 
+<<"Z">> -> 'PREOPEN'; 
 _ -> unknown
 end,
 {'IOIQualifier', Val};
@@ -748,15 +624,15 @@ field_parse(<<"112=", Value/binary>>) ->
 {'TestReqID', Value};
 field_parse(<<"113=", Value/binary>>) -> 
 Val = case Value of
-<<"N">> -> 'NO'; 
 <<"Y">> -> 'YES'; 
+<<"N">> -> 'NO'; 
 _ -> unknown
 end,
 {'ReportToExch', Val};
 field_parse(<<"114=", Value/binary>>) -> 
 Val = case Value of
-<<"N">> -> 'NO'; 
 <<"Y">> -> 'YES'; 
+<<"N">> -> 'NO'; 
 _ -> unknown
 end,
 {'LocateReqd', Val};
@@ -774,8 +650,8 @@ field_parse(<<"120=", Value/binary>>) ->
 {'SettlCurrency', to_float(Value)};
 field_parse(<<"121=", Value/binary>>) -> 
 Val = case Value of
-<<"N">> -> 'NO'; 
 <<"Y">> -> 'YES'; 
+<<"N">> -> 'NO'; 
 _ -> unknown
 end,
 {'ForexReq', Val};
@@ -783,8 +659,8 @@ field_parse(<<"122=", Value/binary>>) ->
 {'OrigSendingTime', Value};
 field_parse(<<"123=", Value/binary>>) -> 
 Val = case Value of
-<<"N">> -> 'NO'; 
-<<"Y">> -> 'YES'; 
+<<"Y">> -> 'GAP_FILL_MESSAGE_MSGSEQNUM_FIELD_VALID'; 
+<<"N">> -> 'SEQUENCE_RESET_IGNORE_MSGSEQNUM'; 
 _ -> unknown
 end,
 {'GapFillFlag', Val};
@@ -811,8 +687,8 @@ field_parse(<<"129=", Value/binary>>) ->
 {'DeliverToSubID', Value};
 field_parse(<<"130=", Value/binary>>) -> 
 Val = case Value of
-<<"N">> -> 'NO'; 
-<<"Y">> -> 'YES'; 
+<<"Y">> -> 'NATURAL'; 
+<<"N">> -> 'NOT_NATURAL'; 
 _ -> unknown
 end,
 {'IOINaturalFlag', Val};
@@ -850,8 +726,8 @@ field_parse(<<"140=", Value/binary>>) ->
 {'PrevClosePx', to_float(Value)};
 field_parse(<<"141=", Value/binary>>) -> 
 Val = case Value of
+<<"Y">> -> 'YES_RESET_SEQUENCE_NUMBERS'; 
 <<"N">> -> 'NO'; 
-<<"Y">> -> 'YES'; 
 _ -> unknown
 end,
 {'ResetSeqNumFlag', Val};
@@ -888,6 +764,8 @@ Val = case Value of
 <<"C">> -> 'EXPIRED'; 
 <<"D">> -> 'RESTATED'; 
 <<"E">> -> 'PENDING_REPLACE'; 
+<<"F">> -> 'TRADE_REPORT'; 
+<<"I">> -> 'INFORMATION'; 
 _ -> unknown
 end,
 {'ExecType', Val};
@@ -929,8 +807,8 @@ field_parse(<<"162=", Value/binary>>) ->
 {'SettlInstID', Value};
 field_parse(<<"163=", Value/binary>>) -> 
 Val = case Value of
-<<"C">> -> 'CANCEL'; 
 <<"N">> -> 'NEW'; 
+<<"C">> -> 'CANCEL'; 
 <<"R">> -> 'REPLACE'; 
 _ -> unknown
 end,
@@ -939,8 +817,8 @@ field_parse(<<"164=", Value/binary>>) ->
 {'EmailThreadID', Value};
 field_parse(<<"165=", Value/binary>>) -> 
 Val = case Value of
-<<"1">> -> 'BROKERS_INSTRUCTIONS'; 
-<<"2">> -> 'INSTITUTIONS_INSTRUCTIONS'; 
+<<"1">> -> 'BROKER'; 
+<<"2">> -> 'INSTITUTION'; 
 _ -> unknown
 end,
 {'SettlInstSource', Val};
@@ -950,15 +828,14 @@ Val = case Value of
 <<"DTC">> -> 'DEPOSITORY_TRUST_COMPANY'; 
 <<"EUR">> -> 'EUROCLEAR'; 
 <<"FED">> -> 'FEDERAL_BOOK_ENTRY'; 
-<<"ISO Country Code">> -> 'LOCAL_MARKET_SETTLE_LOCATION'; 
 <<"PNY">> -> 'PHYSICAL'; 
 <<"PTC">> -> 'PARTICIPANT_TRUST_COMPANY'; 
+<<"ISO">> -> 'LOCAL_MARKET_SETTLE_LOCATION'; 
 _ -> unknown
 end,
 {'SettlLocation', Val};
 field_parse(<<"167=", Value/binary>>) -> 
 Val = case Value of
-<<"?">> -> 'WILDCARD_ENTRY'; 
 <<"BA">> -> 'BANKERS_ACCEPTANCE'; 
 <<"CB">> -> 'CONVERTIBLE_BOND'; 
 <<"CD">> -> 'CERTIFICATE_OF_DEPOSIT'; 
@@ -974,12 +851,11 @@ Val = case Value of
 <<"FUT">> -> 'FUTURE'; 
 <<"GN">> -> 'GOVERNMENT_NATIONAL_MORTGAGE_ASSOCIATION'; 
 <<"GOVT">> -> 'TREASURIES_PLUS_AGENCY_DEBENTURE'; 
-<<"IET">> -> 'MORTGAGE_IOETTE'; 
 <<"MF">> -> 'MUTUAL_FUND'; 
 <<"MIO">> -> 'MORTGAGE_INTEREST_ONLY'; 
 <<"MPO">> -> 'MORTGAGE_PRINCIPAL_ONLY'; 
 <<"MPP">> -> 'MORTGAGE_PRIVATE_PLACEMENT'; 
-<<"MPT">> -> 'MISCELLANEOUS_PASS_THRU'; 
+<<"MPT">> -> 'MISCELLANEOUS_PASSTHRU'; 
 <<"MUNI">> -> 'MUNICIPAL_BOND'; 
 <<"NONE">> -> 'NO_ISITC_SECURITY_TYPE'; 
 <<"OPT">> -> 'OPTION'; 
@@ -990,7 +866,7 @@ Val = case Value of
 <<"TD">> -> 'TIME_DEPOSIT'; 
 <<"USTB">> -> 'US_TREASURY_BILL'; 
 <<"WAR">> -> 'WARRANT'; 
-<<"ZOO">> -> 'CATS_TIGERS_LIONS'; 
+<<"ZOO">> -> 'CATS_TIGERS'; 
 _ -> unknown
 end,
 {'SecurityType', Val};
@@ -1061,8 +937,8 @@ field_parse(<<"196=", Value/binary>>) ->
 {'AllocLinkID', Value};
 field_parse(<<"197=", Value/binary>>) -> 
 Val = case Value of
-<<"0">> -> 'F_X_NETTING'; 
-<<"1">> -> 'F_X_SWAP'; 
+<<"0">> -> 'FX_NETTING'; 
+<<"1">> -> 'FX_SWAP'; 
 _ -> unknown
 end,
 {'AllocLinkType', Val};
@@ -1103,8 +979,8 @@ field_parse(<<"207=", Value/binary>>) ->
 {'SecurityExchange', Value};
 field_parse(<<"208=", Value/binary>>) -> 
 Val = case Value of
-<<"N">> -> 'NO'; 
-<<"Y">> -> 'YES'; 
+<<"Y">> -> 'DETAILS_SHOULD_BE_COMMUNICATED'; 
+<<"N">> -> 'DETAILS_SHOULD_NOT_BE_COMMUNICATED'; 
 _ -> unknown
 end,
 {'NotifyBrokerOfCredit', Val};
@@ -1144,14 +1020,14 @@ field_parse(<<"218=", Value/binary>>) ->
 field_parse(<<"219=", Value/binary>>) -> 
 Val = case Value of
 <<"1">> -> 'CURVE'; 
-<<"2">> -> '5_YR'; 
-<<"3">> -> 'OLD_5'; 
-<<"4">> -> '10_YR'; 
-<<"5">> -> 'OLD_10'; 
-<<"6">> -> '30_YR'; 
-<<"7">> -> 'OLD_30'; 
-<<"8">> -> '3_MO_LIBOR'; 
-<<"9">> -> '6_MO_LIBOR'; 
+<<"2">> -> 'FIVEYR'; 
+<<"3">> -> 'OLD5'; 
+<<"4">> -> 'TENYR'; 
+<<"5">> -> 'OLD10'; 
+<<"6">> -> 'THIRTYYR'; 
+<<"7">> -> 'OLD30'; 
+<<"8">> -> 'THREEMOLIBOR'; 
+<<"9">> -> 'SIXMOLIBOR'; 
 _ -> unknown
 end,
 {'Benchmark', Val};
@@ -1165,12 +1041,15 @@ field_parse(<<"263=", Value/binary>>) ->
 Val = case Value of
 <<"0">> -> 'SNAPSHOT'; 
 <<"1">> -> 'SNAPSHOT_PLUS_UPDATES'; 
-<<"2">> -> 'DISABLE_PREVIOUS_SNAPSHOT_PLUS_UPDATE_REQUEST'; 
+<<"2">> -> 'DISABLE_PREVIOUS'; 
 _ -> unknown
 end,
 {'SubscriptionRequestType', Val};
 field_parse(<<"264=", Value/binary>>) -> 
-{'MarketDepth', to_int(Value)};
+Val = case Value of
+_ -> unknown
+end,
+{'MarketDepth', Val};
 field_parse(<<"265=", Value/binary>>) -> 
 Val = case Value of
 <<"0">> -> 'FULL_REFRESH'; 
@@ -1180,8 +1059,8 @@ end,
 {'MDUpdateType', Val};
 field_parse(<<"266=", Value/binary>>) -> 
 Val = case Value of
-<<"N">> -> 'NO'; 
-<<"Y">> -> 'YES'; 
+<<"Y">> -> 'ONE_BOOK_ENTRY_PER_SIDE_PER_PRICE'; 
+<<"N">> -> 'MULTIPLE_ENTRIES_PER_SIDE_PER_PRICE_ALLOWED'; 
 _ -> unknown
 end,
 {'AggregatedBook', Val};
@@ -1215,9 +1094,9 @@ field_parse(<<"273=", Value/binary>>) ->
 field_parse(<<"274=", Value/binary>>) -> 
 Val = case Value of
 <<"0">> -> 'PLUS_TICK'; 
-<<"1">> -> 'ZERO_PLUS_TICK'; 
+<<"1">> -> 'ZEROPLUS_TICK'; 
 <<"2">> -> 'MINUS_TICK'; 
-<<"3">> -> 'ZERO_MINUS_TICK'; 
+<<"3">> -> 'ZEROMINUS_TICK'; 
 _ -> unknown
 end,
 {'TickDirection', Val};
@@ -1225,15 +1104,15 @@ field_parse(<<"275=", Value/binary>>) ->
 {'MDMkt', Value};
 field_parse(<<"276=", Value/binary>>) -> 
 Val = case Value of
-<<"A">> -> 'OPEN'; 
-<<"B">> -> 'CLOSED'; 
+<<"A">> -> 'OPEN_ACTIVE'; 
+<<"B">> -> 'CLOSED_INACTIVE'; 
 <<"C">> -> 'EXCHANGE_BEST'; 
 <<"D">> -> 'CONSOLIDATED_BEST'; 
 <<"E">> -> 'LOCKED'; 
 <<"F">> -> 'CROSSED'; 
 <<"G">> -> 'DEPTH'; 
 <<"H">> -> 'FAST_TRADING'; 
-<<"I">> -> 'NON_FIRM'; 
+<<"I">> -> 'NONFIRM'; 
 _ -> unknown
 end,
 {'QuoteCondition', Val};
@@ -1243,7 +1122,7 @@ Val = case Value of
 <<"B">> -> 'AVERAGE_PRICE_TRADE'; 
 <<"C">> -> 'CASH_TRADE'; 
 <<"D">> -> 'NEXT_DAY'; 
-<<"E">> -> 'OPENING'; 
+<<"E">> -> 'OPENING_REOPENING_TRADE_DETAIL'; 
 <<"F">> -> 'INTRADAY_TRADE_DETAIL'; 
 <<"G">> -> 'RULE_127_TRADE'; 
 <<"H">> -> 'RULE_155_TRADE'; 
@@ -1290,15 +1169,15 @@ field_parse(<<"284=", Value/binary>>) ->
 {'DeskID', Value};
 field_parse(<<"285=", Value/binary>>) -> 
 Val = case Value of
-<<"0">> -> 'CANCELATION'; 
+<<"0">> -> 'CANCELATION_TRADE_BUST'; 
 <<"1">> -> 'ERROR'; 
 _ -> unknown
 end,
 {'DeleteReason', Val};
 field_parse(<<"286=", Value/binary>>) -> 
 Val = case Value of
-<<"0">> -> 'DAILY_OPEN'; 
-<<"1">> -> 'SESSION_OPEN'; 
+<<"0">> -> 'DAILY_OPEN_CLOSE__SETTLEMENT_PRICE'; 
+<<"1">> -> 'SESSION_OPEN_CLOSE__SETTLEMENT_PRICE'; 
 <<"2">> -> 'DELIVERY_SETTLEMENT_PRICE'; 
 _ -> unknown
 end,
@@ -1319,11 +1198,11 @@ end,
 {'FinancialStatus', Val};
 field_parse(<<"292=", Value/binary>>) -> 
 Val = case Value of
-<<"A">> -> 'EX_DIVIDEND'; 
-<<"B">> -> 'EX_DISTRIBUTION'; 
-<<"C">> -> 'EX_RIGHTS'; 
+<<"A">> -> 'EXDIVIDEND'; 
+<<"B">> -> 'EXDISTRIBUTION'; 
+<<"C">> -> 'EXRIGHTS'; 
 <<"D">> -> 'NEW'; 
-<<"E">> -> 'EX_INTEREST'; 
+<<"E">> -> 'EXINTEREST'; 
 _ -> unknown
 end,
 {'CorporateAction', Val};
@@ -1336,25 +1215,9 @@ field_parse(<<"295=", Value/binary>>) ->
 field_parse(<<"296=", Value/binary>>) -> 
 {'NoQuoteSets', to_int(Value)};
 field_parse(<<"297=", Value/binary>>) -> 
-Val = case Value of
-<<"0">> -> 'ACCEPTED'; 
-<<"1">> -> 'CANCELED_FOR_SYMBOL'; 
-<<"2">> -> 'CANCELED_FOR_SECURITY_TYPE'; 
-<<"3">> -> 'CANCELED_FOR_UNDERLYING'; 
-<<"4">> -> 'CANCELED_ALL'; 
-<<"5">> -> 'REJECTED'; 
-_ -> unknown
-end,
-{'QuoteAckStatus', Val};
+{'QuoteAckStatus', to_int(Value)};
 field_parse(<<"298=", Value/binary>>) -> 
-Val = case Value of
-<<"1">> -> 'CANCEL_FOR_SYMBOL'; 
-<<"2">> -> 'CANCEL_FOR_SECURITY_TYPE'; 
-<<"3">> -> 'CANCEL_FOR_UNDERLYING_SYMBOL'; 
-<<"4">> -> 'CANCEL_FOR_ALL_QUOTES'; 
-_ -> unknown
-end,
-{'QuoteCancelType', Val};
+{'QuoteCancelType', to_int(Value)};
 field_parse(<<"299=", Value/binary>>) -> 
 {'QuoteEntryID', Value};
 field_parse(<<"300=", Value/binary>>) -> 
@@ -1364,30 +1227,18 @@ Val = case Value of
 <<"3">> -> 'QUOTE_REQUEST_EXCEEDS_LIMIT'; 
 <<"4">> -> 'TOO_LATE_TO_ENTER'; 
 <<"5">> -> 'UNKNOWN_QUOTE'; 
-<<"6">> -> 'DUPLICATE_QUOTE'; 
-<<"7">> -> 'INVALID_BID_ASK_SPREAD'; 
+<<"6">> -> 'DUPLICATE_QUOTE_7'; 
 <<"8">> -> 'INVALID_PRICE'; 
 <<"9">> -> 'NOT_AUTHORIZED_TO_QUOTE_SECURITY'; 
 _ -> unknown
 end,
 {'QuoteRejectReason', Val};
 field_parse(<<"301=", Value/binary>>) -> 
-Val = case Value of
-<<"0">> -> 'NO_ACKNOWLEDGEMENT'; 
-<<"1">> -> 'ACKNOWLEDGE_ONLY_NEGATIVE_OR_ERRONEOUS_QUOTES'; 
-<<"2">> -> 'ACKNOWLEDGE_EACH_QUOTE_MESSAGES'; 
-_ -> unknown
-end,
-{'QuoteResponseLevel', Val};
+{'QuoteResponseLevel', to_int(Value)};
 field_parse(<<"302=", Value/binary>>) -> 
 {'QuoteSetID', Value};
 field_parse(<<"303=", Value/binary>>) -> 
-Val = case Value of
-<<"1">> -> 'MANUAL'; 
-<<"2">> -> 'AUTOMATIC'; 
-_ -> unknown
-end,
-{'QuoteRequestType', Val};
+{'QuoteRequestType', to_int(Value)};
 field_parse(<<"304=", Value/binary>>) -> 
 {'TotQuoteEntries', to_int(Value)};
 field_parse(<<"305=", Value/binary>>) -> 
@@ -1419,7 +1270,7 @@ field_parse(<<"317=", Value/binary>>) ->
 field_parse(<<"318=", Value/binary>>) -> 
 {'UnderlyingCurrency', to_float(Value)};
 field_parse(<<"319=", Value/binary>>) -> 
-{'RatioQty', Value};
+{'RatioQty', to_float(Value)};
 field_parse(<<"320=", Value/binary>>) -> 
 {'SecurityReqID', Value};
 field_parse(<<"321=", Value/binary>>) -> 
@@ -1448,58 +1299,58 @@ field_parse(<<"324=", Value/binary>>) ->
 {'SecurityStatusReqID', Value};
 field_parse(<<"325=", Value/binary>>) -> 
 Val = case Value of
-<<"N">> -> 'NO'; 
-<<"Y">> -> 'YES'; 
+<<"Y">> -> 'MESSAGE_IS_BEING_SENT_UNSOLICITED'; 
+<<"N">> -> 'MESSAGE_IS_BEING_SENT_AS_A_RESULT_OF_A_PRIOR_REQUEST'; 
 _ -> unknown
 end,
 {'UnsolicitedIndicator', Val};
 field_parse(<<"326=", Value/binary>>) -> 
 Val = case Value of
 <<"1">> -> 'OPENING_DELAY'; 
-<<"10">> -> 'MARKET_ON_CLOSE_IMBALANCE_SELL'; 
-<<"11">> -> '11'; 
-<<"12">> -> 'NO_MARKET_IMBALANCE'; 
-<<"13">> -> 'NO_MARKET_ON_CLOSE_IMBALANCE'; 
-<<"14">> -> 'ITS_PRE_OPENING'; 
-<<"15">> -> 'NEW_PRICE_INDICATION'; 
-<<"16">> -> 'TRADE_DISSEMINATION_TIME'; 
-<<"17">> -> 'READY_TO_TRADE'; 
-<<"18">> -> 'NOT_AVAILABLE_FOR_TRADING'; 
-<<"19">> -> 'NOT_TRADED_ON_THIS_MARKET'; 
 <<"2">> -> 'TRADING_HALT'; 
-<<"20">> -> 'UNKNOWN_OR_INVALID'; 
 <<"3">> -> 'RESUME'; 
-<<"4">> -> 'NO_OPEN_NO_RESUME'; 
+<<"4">> -> 'NO_OPENNO_RESUME'; 
 <<"5">> -> 'PRICE_INDICATION'; 
 <<"6">> -> 'TRADING_RANGE_INDICATION'; 
 <<"7">> -> 'MARKET_IMBALANCE_BUY'; 
 <<"8">> -> 'MARKET_IMBALANCE_SELL'; 
 <<"9">> -> 'MARKET_ON_CLOSE_IMBALANCE_BUY'; 
+<<"10">> -> 'MARKET_ON_CLOSE_IMBALANCE_SELL'; 
+<<"11">> -> 'NOT_ASSIGNED'; 
+<<"12">> -> 'NO_MARKET_IMBALANCE'; 
+<<"13">> -> 'NO_MARKET_ON_CLOSE_IMBALANCE'; 
+<<"14">> -> 'ITS_PREOPENING'; 
+<<"15">> -> 'NEW_PRICE_INDICATION'; 
+<<"16">> -> 'TRADE_DISSEMINATION_TIME'; 
+<<"17">> -> 'READY_TO_TRADE'; 
+<<"18">> -> 'NOT_AVAILABLE_FOR_TRADING'; 
+<<"19">> -> 'NOT_TRADED_ON_THIS_MARKET'; 
+<<"20">> -> 'UNKNOWN_OR_INVALID'; 
 _ -> unknown
 end,
 {'SecurityTradingStatus', Val};
 field_parse(<<"327=", Value/binary>>) -> 
 Val = case Value of
+<<"I">> -> 'ORDER_IMBALANCE'; 
+<<"X">> -> 'EQUIPMENT_CHANGEOVER'; 
+<<"P">> -> 'NEWS_PENDING'; 
 <<"D">> -> 'NEWS_DISSEMINATION'; 
 <<"E">> -> 'ORDER_INFLUX'; 
-<<"I">> -> 'ORDER_IMBALANCE'; 
 <<"M">> -> 'ADDITIONAL_INFORMATION'; 
-<<"P">> -> 'NEWS_PENDING'; 
-<<"X">> -> 'EQUIPMENT_CHANGEOVER'; 
 _ -> unknown
 end,
-{'HaltReasonChar', Val};
+{'HaltReason', Val};
 field_parse(<<"328=", Value/binary>>) -> 
 Val = case Value of
-<<"N">> -> 'NO'; 
-<<"Y">> -> 'YES'; 
+<<"Y">> -> 'HALT_WAS_DUE_TO_COMMON_STOCK_BEING_HALTED'; 
+<<"N">> -> 'HALT_WAS_NOT_RELATED_TO_A_HALT_OF_THE_COMMON_STOCK'; 
 _ -> unknown
 end,
 {'InViewOfCommon', Val};
 field_parse(<<"329=", Value/binary>>) -> 
 Val = case Value of
-<<"N">> -> 'NO'; 
-<<"Y">> -> 'YES'; 
+<<"Y">> -> 'HALT_WAS_DUE_TO_RELATED_SECURITY_BEING_HALTED'; 
+<<"N">> -> 'HALT_WAS_NOT_RELATED_TO_A_HALT_OF_THE_RELATED_SECURITY'; 
 _ -> unknown
 end,
 {'DueToRelated', Val};
@@ -1546,8 +1397,8 @@ Val = case Value of
 <<"1">> -> 'HALTED'; 
 <<"2">> -> 'OPEN'; 
 <<"3">> -> 'CLOSED'; 
-<<"4">> -> 'PRE_OPEN'; 
-<<"5">> -> 'PRE_CLOSE'; 
+<<"4">> -> 'PREOPEN'; 
+<<"5">> -> 'PRECLOSE'; 
 _ -> unknown
 end,
 {'TradSesStatus', Val};
@@ -1564,14 +1415,7 @@ field_parse(<<"345=", Value/binary>>) ->
 field_parse(<<"346=", Value/binary>>) -> 
 {'NumberOfOrders', to_int(Value)};
 field_parse(<<"347=", Value/binary>>) -> 
-Val = case Value of
-<<"EUC-JP">> -> 'EUC_JP'; 
-<<"ISO-2022-JP">> -> 'ISO_2022_JP'; 
-<<"SHIFT_JIS">> -> 'SHIFT_JIS'; 
-<<"UTF-8">> -> 'UTF_8'; 
-_ -> unknown
-end,
-{'MessageEncoding', Val};
+{'MessageEncoding', Value};
 field_parse(<<"348=", Value/binary>>) -> 
 {'EncodedIssuerLen', to_int(Value)};
 field_parse(<<"349=", Value/binary>>) -> 
@@ -1620,7 +1464,7 @@ Val = case Value of
 <<"4">> -> 'TOO_LATE_TO_ENTER'; 
 <<"5">> -> 'UNKNOWN_QUOTE'; 
 <<"6">> -> 'DUPLICATE_QUOTE'; 
-<<"7">> -> 'INVALID_BID_ASK_SPREAD'; 
+<<"7">> -> 'INVALID_BIDASK_SPREAD'; 
 <<"8">> -> 'INVALID_PRICE'; 
 <<"9">> -> 'NOT_AUTHORIZED_TO_QUOTE_SECURITY'; 
 _ -> unknown
@@ -1638,8 +1482,6 @@ field_parse(<<"373=", Value/binary>>) ->
 Val = case Value of
 <<"0">> -> 'INVALID_TAG_NUMBER'; 
 <<"1">> -> 'REQUIRED_TAG_MISSING'; 
-<<"10">> -> 'SENDINGTIME_ACCURACY_PROBLEM'; 
-<<"11">> -> 'INVALID_MSGTYPE'; 
 <<"2">> -> 'TAG_NOT_DEFINED_FOR_THIS_MESSAGE_TYPE'; 
 <<"3">> -> 'UNDEFINED_TAG'; 
 <<"4">> -> 'TAG_SPECIFIED_WITHOUT_A_VALUE'; 
@@ -1648,13 +1490,15 @@ Val = case Value of
 <<"7">> -> 'DECRYPTION_PROBLEM'; 
 <<"8">> -> 'SIGNATURE_PROBLEM'; 
 <<"9">> -> 'COMPID_PROBLEM'; 
+<<"10">> -> 'SENDINGTIME_ACCURACY_PROBLEM'; 
+<<"11">> -> 'INVALID_MESSAGE_TYPE'; 
 _ -> unknown
 end,
 {'SessionRejectReason', Val};
 field_parse(<<"374=", Value/binary>>) -> 
 Val = case Value of
+<<"N">> -> 'NEW'; 
 <<"C">> -> 'CANCEL'; 
-<<"N">> -> 'NO'; 
 _ -> unknown
 end,
 {'BidRequestTransType', Val};
@@ -1664,19 +1508,13 @@ field_parse(<<"376=", Value/binary>>) ->
 {'ComplianceID', Value};
 field_parse(<<"377=", Value/binary>>) -> 
 Val = case Value of
-<<"N">> -> 'NO'; 
-<<"Y">> -> 'YES'; 
+<<"Y">> -> 'WAS_SOLCITIED'; 
+<<"N">> -> 'WAS_NOT_SOLICITED'; 
 _ -> unknown
 end,
 {'SolicitedFlag', Val};
 field_parse(<<"378=", Value/binary>>) -> 
 Val = case Value of
-<<"0">> -> 'GT_CORPORATE_ACTION'; 
-<<"1">> -> 'GT_RENEWAL'; 
-<<"2">> -> 'VERBAL_CHANGE'; 
-<<"3">> -> 'REPRICING_OF_ORDER'; 
-<<"4">> -> 'BROKER_OPTION'; 
-<<"5">> -> 'PARTIAL_DECLINE_OF_ORDERQTY'; 
 _ -> unknown
 end,
 {'ExecRestatementReason', Val};
@@ -1703,8 +1541,8 @@ field_parse(<<"384=", Value/binary>>) ->
 {'NoMsgTypes', to_int(Value)};
 field_parse(<<"385=", Value/binary>>) -> 
 Val = case Value of
-<<"R">> -> 'RECEIVE'; 
 <<"S">> -> 'SEND'; 
+<<"R">> -> 'RECEIVE'; 
 _ -> unknown
 end,
 {'MsgDirection', Val};
@@ -1764,20 +1602,13 @@ field_parse(<<"407=", Value/binary>>) ->
 field_parse(<<"408=", Value/binary>>) -> 
 {'ValueOfFutures', Value};
 field_parse(<<"409=", Value/binary>>) -> 
-Val = case Value of
-<<"1">> -> '5_DAY_MOVING_AVERAGE'; 
-<<"2">> -> '20_DAY_MOVING_AVERAGE'; 
-<<"3">> -> 'NORMAL_MARKET_SIZE'; 
-<<"4">> -> 'OTHER'; 
-_ -> unknown
-end,
-{'LiquidityIndType', Val};
+{'LiquidityIndType', to_int(Value)};
 field_parse(<<"410=", Value/binary>>) -> 
 {'WtAverageLiquidity', Value};
 field_parse(<<"411=", Value/binary>>) -> 
 Val = case Value of
-<<"N">> -> 'NO'; 
-<<"Y">> -> 'YES'; 
+<<"Y">> -> 'TRUE'; 
+<<"N">> -> 'FALSE'; 
 _ -> unknown
 end,
 {'ExchangeForPhysical', Val};
@@ -1786,51 +1617,17 @@ field_parse(<<"412=", Value/binary>>) ->
 field_parse(<<"413=", Value/binary>>) -> 
 {'CrossPercent', Value};
 field_parse(<<"414=", Value/binary>>) -> 
-Val = case Value of
-<<"1">> -> 'BUYSIDE_EXPLICITLY_REQUESTS_STATUS_USING_STATUSREQUEST'; 
-<<"2">> -> 'SELLSIDE_PERIODICALLY_SENDS_STATUS_USING_LISTSTATUS_PERIOD_OPTIONALLY_SPECIFIED_IN_PROGRESSPERIOD'; 
-<<"3">> -> 'REAL_TIME_EXECUTION_REPORTS'; 
-_ -> unknown
-end,
-{'ProgRptReqs', Val};
+{'ProgRptReqs', to_int(Value)};
 field_parse(<<"415=", Value/binary>>) -> 
 {'ProgPeriodInterval', to_int(Value)};
 field_parse(<<"416=", Value/binary>>) -> 
-Val = case Value of
-<<"1">> -> 'NET'; 
-<<"2">> -> 'GROSS'; 
-_ -> unknown
-end,
-{'IncTaxInd', Val};
+{'IncTaxInd', to_int(Value)};
 field_parse(<<"417=", Value/binary>>) -> 
 {'NumBidders', to_int(Value)};
 field_parse(<<"418=", Value/binary>>) -> 
-Val = case Value of
-<<"A">> -> 'AGENCY'; 
-<<"G">> -> 'VWAP_GUARANTEE'; 
-<<"J">> -> 'GUARANTEED_CLOSE'; 
-<<"R">> -> 'RISK_TRADE'; 
-_ -> unknown
-end,
-{'TradeType', Val};
+{'TradeType', Value};
 field_parse(<<"419=", Value/binary>>) -> 
-Val = case Value of
-<<"2">> -> 'CLOSING_PRICE_AT_MORNING_SESSION'; 
-<<"3">> -> 'CLOSING_PRICE'; 
-<<"4">> -> 'CURRENT_PRICE'; 
-<<"5">> -> 'SQ'; 
-<<"6">> -> 'VWAP_THROUGH_A_DAY'; 
-<<"7">> -> 'VWAP_THROUGH_A_MORNING_SESSION'; 
-<<"8">> -> 'VWAP_THROUGH_AN_AFTERNOON_SESSION'; 
-<<"9">> -> 'VWAP_THROUGH_A_DAY_EXCEPT_YORI'; 
-<<"A">> -> 'VWAP_THROUGH_A_MORNING_SESSION_EXCEPT_YORI'; 
-<<"B">> -> 'VWAP_THROUGH_AN_AFTERNOON_SESSION_EXCEPT_YORI'; 
-<<"C">> -> 'STRIKE'; 
-<<"D">> -> 'OPEN'; 
-<<"Z">> -> 'OTHERS'; 
-_ -> unknown
-end,
-{'BasisPxType', Val};
+{'BasisPxType', Value};
 field_parse(<<"420=", Value/binary>>) -> 
 {'NoBidComponents', to_int(Value)};
 field_parse(<<"421=", Value/binary>>) -> 
@@ -1838,13 +1635,7 @@ field_parse(<<"421=", Value/binary>>) ->
 field_parse(<<"422=", Value/binary>>) -> 
 {'TotNoStrikes', to_int(Value)};
 field_parse(<<"423=", Value/binary>>) -> 
-Val = case Value of
-<<"1">> -> 'PERCENTAGE'; 
-<<"2">> -> 'PER_SHARE'; 
-<<"3">> -> 'FIXED_AMOUNT'; 
-_ -> unknown
-end,
-{'PriceType', Val};
+{'PriceType', to_int(Value)};
 field_parse(<<"424=", Value/binary>>) -> 
 {'DayOrderQty', to_float(Value)};
 field_parse(<<"425=", Value/binary>>) -> 
@@ -1864,30 +1655,15 @@ field_parse(<<"428=", Value/binary>>) ->
 field_parse(<<"429=", Value/binary>>) -> 
 {'ListStatusType', to_int(Value)};
 field_parse(<<"430=", Value/binary>>) -> 
-Val = case Value of
-<<"1">> -> 'NET'; 
-<<"2">> -> 'GROSS'; 
-_ -> unknown
-end,
-{'NetGrossInd', Val};
+{'NetGrossInd', to_int(Value)};
 field_parse(<<"431=", Value/binary>>) -> 
 {'ListOrderStatus', to_int(Value)};
 field_parse(<<"432=", Value/binary>>) -> 
 {'ExpireDate', Value};
 field_parse(<<"433=", Value/binary>>) -> 
-Val = case Value of
-<<"1">> -> 'IMMEDIATE'; 
-<<"2">> -> 'WAIT_FOR_EXECUTE_INSTRUCTION'; 
-_ -> unknown
-end,
-{'ListExecInstType', Val};
+{'ListExecInstType', Value};
 field_parse(<<"434=", Value/binary>>) -> 
-Val = case Value of
-<<"1">> -> 'ORDER_CANCEL_REQUEST'; 
-<<"2">> -> 'ORDER_CANCEL_REPLACE_REQUEST'; 
-_ -> unknown
-end,
-{'CxlRejResponseTo', Val};
+{'CxlRejResponseTo', Value};
 field_parse(<<"435=", Value/binary>>) -> 
 {'UnderlyingCouponRate', Value};
 field_parse(<<"436=", Value/binary>>) -> 
@@ -1903,13 +1679,7 @@ field_parse(<<"440=", Value/binary>>) ->
 field_parse(<<"441=", Value/binary>>) -> 
 {'LiquidityNumSecurities', to_int(Value)};
 field_parse(<<"442=", Value/binary>>) -> 
-Val = case Value of
-<<"1">> -> 'SINGLE_SECURITY'; 
-<<"2">> -> 'INDIVIDUAL_LEG_OF_A_MULTI_LEG_SECURITY'; 
-<<"3">> -> 'MULTI_LEG_SECURITY'; 
-_ -> unknown
-end,
-{'MultiLegReportingType', Val};
+{'MultiLegReportingType', Value};
 field_parse(<<"443=", Value/binary>>) -> 
 {'StrikeTime', Value};
 field_parse(<<"444=", Value/binary>>) -> 
@@ -1918,31 +1688,144 @@ field_parse(<<"445=", Value/binary>>) ->
 {'EncodedListStatusTextLen', to_int(Value)};
 field_parse(<<"446=", Value/binary>>) -> 
 {'EncodedListStatusText', Value};
-field_parse(Other) ->
-    {unknown, Other}.
-
-check_sum(<<Message/binary>>) ->
-    List = binary_to_list(Message),
-    lists:sum(List) rem 256.
-
-to_int(Binary) ->
-    list_to_integer(binary_to_list(Binary)).
-
-to_float(Binary) -> Binary.
-
-%list_to_float(binary_to_list(Binary)).
-
-validate(Message) ->
-    validate_message(Message, required_header_fields()),
-    validate_message(Message, required_trailer_fields()).
-
-validate_message(Message, Required) ->
-    lists:map(
-      fun(F) -> 
-	      try
-		  [{F, _Val}] = proplists:lookup_all(F, Message)
-	      catch
-		  error:_Err -> ok
-		      %io:format("Required field ~p missing ~n", [F])
-	      end
-      end, Required).
+field_parse(<<"483=", Value/binary>>) -> 
+{'TransBkdTime', Value};
+field_parse(<<"528=", Value/binary>>) -> 
+Val = case Value of
+<<"P">> -> 'PRINCIPAL'; 
+<<"A">> -> 'AGENT'; 
+_ -> unknown
+end,
+{'OrderCapacity', Val};
+field_parse(<<"529=", Value/binary>>) -> 
+Val = case Value of
+<<"B">> -> 'ISSUER_HOLDING'; 
+<<"C">> -> 'ISSUE_PRICE_STABILIZATION'; 
+<<"5">> -> 'ACTING_AS_MARKET_MAKER'; 
+_ -> unknown
+end,
+{'OrderRestrictions', Val};
+field_parse(<<"571=", Value/binary>>) -> 
+{'TradeReportID', Value};
+field_parse(<<"572=", Value/binary>>) -> 
+{'TradeReportRefId', Value};
+field_parse(<<"577=", Value/binary>>) -> 
+{'ClearingInstruction', to_int(Value)};
+field_parse(<<"625=", Value/binary>>) -> 
+{'TradingsessionSubId', Value};
+field_parse(<<"700=", Value/binary>>) -> 
+{'ReversalIndicator', Value};
+field_parse(<<"751=", Value/binary>>) -> 
+Val = case Value of
+<<"1">> -> 'INVALID_PARTY_INFORMATION'; 
+<<"2">> -> 'UNKNOWN_INSTRUMENT'; 
+<<"3">> -> 'UNAUTHORIZED_TO_REPORT_TRADES'; 
+<<"4">> -> 'INVALID_TRADE_TYPE'; 
+<<"6">> -> 'INCORRECT_DATA_FORMAT_FOR_VALUE'; 
+<<"99">> -> 'OTHER'; 
+_ -> unknown
+end,
+{'TradeReportRejectReason', Val};
+field_parse(<<"820=", Value/binary>>) -> 
+{'TradeLinkId', Value};
+field_parse(<<"828=", Value/binary>>) -> 
+{'TrdType', to_int(Value)};
+field_parse(<<"852=", Value/binary>>) -> 
+{'PublishTrdIndicator', Value};
+field_parse(<<"856=", Value/binary>>) -> 
+{'TradeReportType', to_int(Value)};
+field_parse(<<"880=", Value/binary>>) -> 
+{'TrdMatchId', Value};
+field_parse(<<"881=", Value/binary>>) -> 
+{'SecondaryTradeReportRefID', Value};
+field_parse(<<"939=", Value/binary>>) -> 
+{'TrdRptStatus', to_int(Value)};
+field_parse(<<"5149=", Value/binary>>) -> 
+{'Memo', Value};
+field_parse(<<"5815=", Value/binary>>) -> 
+{'SubMktID', Value};
+field_parse(<<"5817=", Value/binary>>) -> 
+{'ContraOrderRestrictions', Value};
+field_parse(<<"6169=", Value/binary>>) -> 
+{'DisseminationTime', Value};
+field_parse(<<"6204=", Value/binary>>) -> 
+{'TimestampOwn', Value};
+field_parse(<<"6205=", Value/binary>>) -> 
+{'TimestampCounterpart', Value};
+field_parse(<<"6206=", Value/binary>>) -> 
+Val = case Value of
+<<"I">> -> 'INTERNAL'; 
+<<"E">> -> 'EXTERNAL'; 
+_ -> unknown
+end,
+{'InternalExternal', Val};
+field_parse(<<"6209=", Value/binary>>) -> 
+{'ClRefID', Value};
+field_parse(<<"9140=", Value/binary>>) -> 
+Val = case Value of
+<<"Y">> -> 'DISPLAY'; 
+<<"N">> -> 'NON_DISPLAY'; 
+<<"D">> -> 'DISPLAY_OVERRIDE_POST_TRADE_ANONYMITY'; 
+<<"R">> -> 'NON_DISPLAY_OVERRIDE_POST_TRADE_ANONYMITY'; 
+<<"I">> -> 'IMBALANCE_ONLY'; 
+_ -> unknown
+end,
+{'DisplayInst', Val};
+field_parse(<<"9165=", Value/binary>>) -> 
+{'RFQReferenceNo', Value};
+field_parse(<<"9292=", Value/binary>>) -> 
+{'MICCode', Value};
+field_parse(<<"9355=", Value/binary>>) -> 
+Val = case Value of
+_ -> unknown
+end,
+{'CrossTradeFlag', Val};
+field_parse(<<"9822=", Value/binary>>) -> 
+{'ClearingPrice', Value};
+field_parse(<<"9854=", Value/binary>>) -> 
+{'OverrideFlag', Value};
+field_parse(<<"9847=", Value/binary>>) -> 
+Val = case Value of
+<<"B">> -> 'BROKEN'; 
+<<"M">> -> 'MATCHED'; 
+_ -> unknown
+end,
+{'LockedInStatus', Val};
+field_parse(<<"9855=", Value/binary>>) -> 
+Val = case Value of
+<<"1">> -> '60_MINUTES'; 
+<<"2">> -> '180_MINUTES'; 
+<<"3">> -> '12:00_TOMORROW'; 
+<<"4">> -> 'UNTIL_END_OF_TRADING_DAY'; 
+<<"5">> -> 'UNTIL_NEXT_TRADING_DAY'; 
+<<"6">> -> 'UNTIL_END_OF_SECOND_TRADING_DAY'; 
+<<"7">> -> 'UNTIL_END_OF_THIRD_TRADING_DAY'; 
+<<"8">> -> 'UNTIL_END_OF_CURRENT_DAY'; 
+_ -> unknown
+end,
+{'DelayedDissemination', Val};
+field_parse(<<"9856=", Value/binary>>) -> 
+Val = case Value of
+<<"B">> -> 'BUYER_SUBMITTED_BREAK_REQUEST'; 
+<<"S">> -> 'SELLER_SUBMITTED_BREAK_REQUEST'; 
+<<"X">> -> 'TRADE_BROKEN_BY_BOTH_BUYER_AND_SELLER'; 
+<<"L">> -> 'TRADE_BROKEN_THROUGH_MARKET_CENTER'; 
+_ -> unknown
+end,
+{'BreakIndicator', Val};
+field_parse(<<"9857=", Value/binary>>) -> 
+Val = case Value of
+<<"M">> -> 'MATCHED'; 
+_ -> unknown
+end,
+{'LockedIn', Val};
+field_parse(<<"9861=", Value/binary>>) -> 
+{'BrSeqNbr', Value};
+field_parse(<<"9862=", Value/binary>>) -> 
+{'ContraTradePA', Value};
+field_parse(<<"9863=", Value/binary>>) -> 
+{'ContraClearingAcct', Value};
+field_parse(<<"9882=", Value/binary>>) -> 
+{'LiquidityFlag', Value};
+field_parse(<<"1003=", Value/binary>>) -> 
+{'TradeId', Value}.

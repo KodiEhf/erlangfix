@@ -3,7 +3,7 @@
 -include_lib("xmerl/include/xmerl.hrl").
 
 main() ->
-    {#xmlElement{name=_Name, content=Content}, _} = xmerl_scan:file("FIX42.xml"),
+    {#xmlElement{name=_Name, content=Content}, _} = xmerl_scan:file("Fix42_inet.xml"),
     {ok, FileDescriptor} = file:open("p.erl", [write]), 
     process_content(Content, FileDescriptor),
     file:close(FileDescriptor).
