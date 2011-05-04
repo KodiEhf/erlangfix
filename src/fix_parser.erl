@@ -2,10 +2,6 @@
 -include("fix.hrl").
 -compile(export_all).
 
-%% Data = <<"8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|">>.
-
-%%<<"8=FIX.4.2|9=65|35=A|49=SERVER|56=CLIENT|34=177|52=20090107-18:15:16|98=0|108=30|10=062|">>
-%%8=FIX.4.2|9=0186|35=8|34=1|52=20101119-10:37:46|49=INORD|50=S|56=Y48|57=Y4805|43=Y|122=20101119-06:55:00|6=0.0|11=KODVRSKTKOLJP|14=0|17=0|20=0|37=309|39=0|54=1|55=10771|150=D|151=0|109=Y48|378=1|198=163|10=169|
 %% We need a mapping of integers to tag-names
 %% We know that a message ends with "10=xyz |"
 %% Parse should return a list of "parsed messages" and a binary rest
@@ -16,16 +12,22 @@ get_data() ->
     Data = <<"8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=0186|35=8|34=1|52=20101119-10:37:46|49=INORD|50=S|56=Y48|57=Y4805|43=Y|122=20101119-06:55:00|6=0.0|11=KODVRSKTKOLJP|14=0|17=0|20=0|37=309|39=0|54=1|55=10771|150=D|151=0|109=Y48|378=1|198=163|10=169|">>,
     binary:replace(Data, <<"|">>, <<2#01>>,[global]).
 
+test(0) ->
+    ok;
+test(Count) ->
+    test(),
+    test(Count-1).
+
 test() ->
     {ok, FD} = file:open("log.fix", [read, binary]),
     read_from_file(FD, 0, <<>>),
     file:close(FD).
 
 read_from_file(FD, Index, Rest)->
-    case file:pread(FD, Index, 1000) of
+    case file:pread(FD, Index, 4000) of
 	{ok, Data} -> 
 	    {ok, _Result, NewRest} = parse(<<Rest/binary,Data/binary>>),
-	    read_from_file(FD, Index+1000, NewRest);
+	    read_from_file(FD, Index+4000, NewRest);
 	eof ->
 	    io:format("eof file closed~n");
 	{error, Reason} ->
@@ -66,7 +68,7 @@ parse_loop(<<Data/binary>>, Result) ->
 	%% The message part used to verify the checksum
 	<<CheckSumData:MessageLength/binary, _/binary>> = <<Data/binary>>,
 	CheckSum = check_sum(CheckSumData),
-        io:format("message checksum is ~p, Calculated CheckSum is ~p~n", [Sum, CheckSum]),
+        %io:format("message checksum is ~p, Calculated CheckSum is ~p~n", [Sum, CheckSum]),
 	%% Validate the message
 	validate(ParsedMessage),
 	%% Return the parsed message, and the rest of the buffer
