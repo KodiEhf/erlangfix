@@ -58,7 +58,7 @@ generate_field_parse(#xmlElement{name=field, content=Content, attributes=_Attrib
 		lists:map(fun(Elem) -> generate_enum_parse(Elem, FD) end, Content),
 		io:format(FD, "_ -> unknown~n", []),
 		io:format(FD, "end,~n",[]),
-		io:format(FD, "{'~s', Val};~n", [Name]);
+		io:format(FD, "{'~s', {Val, Value}};~n", [Name]);
 	false ->
 	    case Type of
 		"LENGTH" -> io:format(FD,"{'~s', to_int(Value)};~n", [Name]);
@@ -91,7 +91,8 @@ generate_validator(#xmlElement{name=trailer} = Element, FD) ->
 generate_validator(#xmlElement{name=message} = Element, FD) ->
     RequiredList = get_required_fields(Element),
     Name = get_attribute(Element, name),
-    io:format(FD, "required_fields('~s') -> ~n~p;~n", [Name, RequiredList]);
+    Enum = get_attribute(Element, msgtype),
+    io:format(FD, "required_fields(<<~p>>) -> ~n~p;~n", [Enum, RequiredList]);
 
 generate_validator(_,_) -> ok.
 

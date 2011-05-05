@@ -24,12 +24,11 @@ test() ->
     file:close(FD).
 
 read_from_file(FD, Index, Rest)->
-    case file:pread(FD, Index, 4000) of
+    case file:pread(FD, Index, 8000) of
 	{ok, Data} -> 
 	    {ok, _Result, NewRest} = parse(<<Rest/binary,Data/binary>>),
-	    read_from_file(FD, Index+4000, NewRest);
-	eof ->
-	    io:format("eof file closed~n");
+	    read_from_file(FD, Index+8000, NewRest);
+	eof -> ok;
 	{error, Reason} ->
 	    io:format("error ~p~n", [Reason])
     end.
@@ -70,12 +69,13 @@ parse_loop(<<Data/binary>>, Result) ->
 	CheckSum = check_sum(CheckSumData),
         %io:format("message checksum is ~p, Calculated CheckSum is ~p~n", [Sum, CheckSum]),
 	%% Validate the message
-	validate(ParsedMessage),
+	%% io:format("message is ~p~n", [ParsedMessage]),
+	FixMessage = #fix_message{msg_type=proplists:get_value('MsgType', ParsedMessage), fields=ParsedMessage},
+	validate(FixMessage),
 	%% Return the parsed message, and the rest of the buffer
-	parse_loop(RestOfData, [#fix_message{msg_type=proplists:get_value('MsgType', ParsedMessage), 
-					     fields=ParsedMessage}|Result])
+	parse_loop(RestOfData, [FixMessage | Result])
     catch
-	error: _Err ->  {ok, Result, Data}
+	error: _Err -> {ok, Result, Data}
     end.
 
 check_sum(<<Message/binary>>) ->
@@ -89,9 +89,10 @@ to_float(Binary) -> Binary.
 
 %list_to_float(binary_to_list(Binary)).
 
-validate(Message) ->
-    validate_message(Message, required_header_fields()),
-    validate_message(Message, required_trailer_fields()).
+validate(#fix_message{msg_type={MsgType, Tag}, fields=Fields}) ->
+    validate_message(Fields, required_header_fields()),
+    validate_message(Fields, required_fields(Tag)),
+    validate_message(Fields, required_trailer_fields()).
 
 validate_message(Message, Required) ->
     lists:map(
@@ -99,11 +100,10 @@ validate_message(Message, Required) ->
 	      try
 		  [{F, _Val}] = proplists:lookup_all(F, Message)
 	      catch
-		  error:_Err -> ok
-		      %io:format("Required field ~p missing ~n", [F])
+		  error:_Err ->
+		      io:format("Required field ~p missing ~n", [F])
 	      end
       end, Required).
-
 
 
 required_header_fields() -> 
@@ -112,33 +112,32 @@ required_header_fields() ->
 required_trailer_fields() -> 
 ['CheckSum'].
 
-required_fields('Heartbeat') -> 
+required_fields(<<"0">>) -> 
 [];
-required_fields('Logon') -> 
+required_fields(<<"A">>) -> 
 ['HeartBtInt','EncryptMethod'];
-required_fields('TestRequest') -> 
+required_fields(<<"1">>) -> 
 ['TestReqID'];
-required_fields('ResendRequest') -> 
+required_fields(<<"2">>) -> 
 ['EndSeqNo','BeginSeqNo'];
-required_fields('Reject') -> 
+required_fields(<<"3">>) -> 
 ['RefSeqNum'];
-required_fields('SequenceReset') -> 
+required_fields(<<"4">>) -> 
 ['NewSeqNo'];
-required_fields('Logout') -> 
+required_fields(<<"5">>) -> 
 [];
-required_fields('NewOrderSingle') -> 
+required_fields(<<"D">>) -> 
 ['TransactTime','Symbol','Side','OrdType','HandlInst','ClOrdID'];
-required_fields('ExecutionReport') -> 
+required_fields(<<"8">>) -> 
 ['LeavesQty','ExecType','Side','OrdStatus','OrderID','ExecTransType','ExecID',
  'CumQty','AvgPx'];
-required_fields('OrderCancelReplaceRequest') -> 
+required_fields(<<"G">>) -> 
 ['TransactTime','Symbol','Side','OrigClOrdID','OrdType','OrderQty','OrderID',
  'HandlInst','ClOrdID'];
-required_fields('OrderCancelRequest') -> 
+required_fields(<<"F">>) -> 
 ['TransactTime','Symbol','Side','OrigClOrdID','OrderQty','OrderID','ClOrdID'];
-required_fields('OrderCancelReject') -> 
+required_fields(<<"9">>) -> 
 ['CxlRejResponseTo','ClientID','OrigClOrdID','OrdStatus','OrderID','ClOrdID'].
-
 
 field_parse(<<"1=", Value/binary>>) -> 
 {'Account', Value};
@@ -154,7 +153,7 @@ Val = case Value of
 <<"T">> -> 'TRADE'; 
 _ -> unknown
 end,
-{'AdvSide', Val};
+{'AdvSide', {Val, Value}};
 field_parse(<<"5=", Value/binary>>) -> 
 Val = case Value of
 <<"N">> -> 'NEW'; 
@@ -162,7 +161,7 @@ Val = case Value of
 <<"R">> -> 'REPLACE'; 
 _ -> unknown
 end,
-{'AdvTransType', Val};
+{'AdvTransType', {Val, Value}};
 field_parse(<<"6=", Value/binary>>) -> 
 {'AvgPx', to_float(Value)};
 field_parse(<<"7=", Value/binary>>) -> 
@@ -184,7 +183,7 @@ Val = case Value of
 <<"3">> -> 'ABSOLUTE'; 
 _ -> unknown
 end,
-{'CommType', Val};
+{'CommType', {Val, Value}};
 field_parse(<<"14=", Value/binary>>) -> 
 {'CumQty', to_float(Value)};
 field_parse(<<"15=", Value/binary>>) -> 
@@ -201,7 +200,7 @@ Val = case Value of
 <<"R">> -> 'PRIMARY_PEG'; 
 _ -> unknown
 end,
-{'ExecInst', Val};
+{'ExecInst', {Val, Value}};
 field_parse(<<"19=", Value/binary>>) -> 
 {'ExecRefID', Value};
 field_parse(<<"20=", Value/binary>>) -> 
@@ -212,7 +211,7 @@ Val = case Value of
 <<"3">> -> 'STATUS'; 
 _ -> unknown
 end,
-{'ExecTransType', Val};
+{'ExecTransType', {Val, Value}};
 field_parse(<<"21=", Value/binary>>) -> 
 Val = case Value of
 <<"1">> -> 'AUTOMATED_EXECUTION_ORDER_PRIVATE_NO_BROKER_INTERVENTION'; 
@@ -220,7 +219,7 @@ Val = case Value of
 <<"3">> -> 'MANUAL_ORDER_BEST_EXECUTION'; 
 _ -> unknown
 end,
-{'HandlInst', Val};
+{'HandlInst', {Val, Value}};
 field_parse(<<"22=", Value/binary>>) -> 
 Val = case Value of
 <<"1">> -> 'CUSIP'; 
@@ -234,7 +233,7 @@ Val = case Value of
 <<"9">> -> 'CONSOLIDATED_TAPE_ASSOCIATION'; 
 _ -> unknown
 end,
-{'IDSource', Val};
+{'IDSource', {Val, Value}};
 field_parse(<<"23=", Value/binary>>) -> 
 {'IOIid', Value};
 field_parse(<<"24=", Value/binary>>) -> 
@@ -246,7 +245,7 @@ Val = case Value of
 <<"H">> -> 'HIGH'; 
 _ -> unknown
 end,
-{'IOIQltyInd', Val};
+{'IOIQltyInd', {Val, Value}};
 field_parse(<<"26=", Value/binary>>) -> 
 {'IOIRefID', Value};
 field_parse(<<"27=", Value/binary>>) -> 
@@ -258,7 +257,7 @@ Val = case Value of
 <<"R">> -> 'REPLACE'; 
 _ -> unknown
 end,
-{'IOITransType', Val};
+{'IOITransType', {Val, Value}};
 field_parse(<<"29=", Value/binary>>) -> 
 Val = case Value of
 <<"1">> -> 'AGENT'; 
@@ -267,7 +266,7 @@ Val = case Value of
 <<"4">> -> 'PRINCIPAL'; 
 _ -> unknown
 end,
-{'LastCapacity', Val};
+{'LastCapacity', {Val, Value}};
 field_parse(<<"30=", Value/binary>>) -> 
 {'LastMkt', Value};
 field_parse(<<"31=", Value/binary>>) -> 
@@ -279,7 +278,56 @@ field_parse(<<"33=", Value/binary>>) ->
 field_parse(<<"34=", Value/binary>>) -> 
 {'MsgSeqNum', to_int(Value)};
 field_parse(<<"35=", Value/binary>>) -> 
-{'MsgType', Value};
+Val = case Value of
+<<"0">> -> 'HEARTBEAT'; 
+<<"1">> -> 'TEST_REQUEST'; 
+<<"2">> -> 'RESEND_REQUEST'; 
+<<"3">> -> 'REJECT'; 
+<<"4">> -> 'SEQUENCE_RESET'; 
+<<"5">> -> 'LOGOUT'; 
+<<"6">> -> 'INDICATION_OF_INTEREST'; 
+<<"7">> -> 'ADVERTISEMENT'; 
+<<"8">> -> 'EXECUTION_REPORT'; 
+<<"9">> -> 'ORDER_CANCEL_REJECT'; 
+<<"a">> -> 'QUOTE_STATUS_REQUEST'; 
+<<"A">> -> 'LOGON'; 
+<<"B">> -> 'NEWS'; 
+<<"b">> -> 'QUOTE_ACKNOWLEDGEMENT'; 
+<<"C">> -> 'EMAIL'; 
+<<"c">> -> 'SECURITY_DEFINITION_REQUEST'; 
+<<"D">> -> 'ORDER_SINGLE'; 
+<<"d">> -> 'SECURITY_DEFINITION'; 
+<<"E">> -> 'ORDER_LIST'; 
+<<"e">> -> 'SECURITY_STATUS_REQUEST'; 
+<<"f">> -> 'SECURITY_STATUS'; 
+<<"F">> -> 'ORDER_CANCEL_REQUEST'; 
+<<"G">> -> 'ORDER_CANCEL_REPLACE_REQUEST'; 
+<<"g">> -> 'TRADING_SESSION_STATUS_REQUEST'; 
+<<"H">> -> 'ORDER_STATUS_REQUEST'; 
+<<"h">> -> 'TRADING_SESSION_STATUS'; 
+<<"i">> -> 'MASS_QUOTE'; 
+<<"j">> -> 'BUSINESS_MESSAGE_REJECT'; 
+<<"J">> -> 'ALLOCATION'; 
+<<"K">> -> 'LIST_CANCEL_REQUEST'; 
+<<"k">> -> 'BID_REQUEST'; 
+<<"l">> -> 'BID_RESPONSE'; 
+<<"L">> -> 'LIST_EXECUTE'; 
+<<"m">> -> 'LIST_STRIKE_PRICE'; 
+<<"M">> -> 'LIST_STATUS_REQUEST'; 
+<<"N">> -> 'LIST_STATUS'; 
+<<"P">> -> 'ALLOCATION_ACK'; 
+<<"Q">> -> 'DONT_KNOW_TRADE'; 
+<<"R">> -> 'QUOTE_REQUEST'; 
+<<"S">> -> 'QUOTE'; 
+<<"T">> -> 'SETTLEMENT_INSTRUCTIONS'; 
+<<"V">> -> 'MARKET_DATA_REQUEST'; 
+<<"W">> -> 'MARKET_DATA_SNAPSHOT_FULL_REFRESH'; 
+<<"X">> -> 'MARKET_DATA_INCREMENTAL_REFRESH'; 
+<<"Y">> -> 'MARKET_DATA_REQUEST_REJECT'; 
+<<"Z">> -> 'QUOTE_CANCEL'; 
+_ -> unknown
+end,
+{'MsgType', {Val, Value}};
 field_parse(<<"36=", Value/binary>>) -> 
 {'NewSeqNo', to_int(Value)};
 field_parse(<<"37=", Value/binary>>) -> 
@@ -305,7 +353,7 @@ Val = case Value of
 <<"E">> -> 'PENDING_REPLACE'; 
 _ -> unknown
 end,
-{'OrdStatus', Val};
+{'OrdStatus', {Val, Value}};
 field_parse(<<"40=", Value/binary>>) -> 
 Val = case Value of
 <<"1">> -> 'MARKET'; 
@@ -313,7 +361,7 @@ Val = case Value of
 <<"P">> -> 'PEGGED'; 
 _ -> unknown
 end,
-{'OrdType', Val};
+{'OrdType', {Val, Value}};
 field_parse(<<"41=", Value/binary>>) -> 
 {'OrigClOrdID', Value};
 field_parse(<<"42=", Value/binary>>) -> 
@@ -324,7 +372,7 @@ Val = case Value of
 <<"N">> -> 'ORIGINAL_TRANSMISSION'; 
 _ -> unknown
 end,
-{'PossDupFlag', Val};
+{'PossDupFlag', {Val, Value}};
 field_parse(<<"44=", Value/binary>>) -> 
 {'Price', to_float(Value)};
 field_parse(<<"45=", Value/binary>>) -> 
@@ -357,7 +405,7 @@ Val = case Value of
 <<"Z">> -> 'SHORT_EXEMPT_NONMEMBER'; 
 _ -> unknown
 end,
-{'Rule80A', Val};
+{'Rule80A', {Val, Value}};
 field_parse(<<"48=", Value/binary>>) -> 
 {'SecurityID', Value};
 field_parse(<<"49=", Value/binary>>) -> 
@@ -365,7 +413,7 @@ Val = case Value of
 <<"INORD">> -> 'INORD'; 
 _ -> unknown
 end,
-{'SenderCompID', Val};
+{'SenderCompID', {Val, Value}};
 field_parse(<<"50=", Value/binary>>) -> 
 {'SenderSubID', Value};
 field_parse(<<"52=", Value/binary>>) -> 
@@ -380,7 +428,7 @@ Val = case Value of
 <<"8">> -> 'CROSS'; 
 _ -> unknown
 end,
-{'Side', Val};
+{'Side', {Val, Value}};
 field_parse(<<"55=", Value/binary>>) -> 
 {'Symbol', Value};
 field_parse(<<"56=", Value/binary>>) -> 
@@ -389,7 +437,7 @@ field_parse(<<"57=", Value/binary>>) ->
 Val = case Value of
 _ -> unknown
 end,
-{'TargetSubID', Val};
+{'TargetSubID', {Val, Value}};
 field_parse(<<"58=", Value/binary>>) -> 
 {'Text', Value};
 field_parse(<<"59=", Value/binary>>) -> 
@@ -404,7 +452,7 @@ Val = case Value of
 <<"9">> -> 'GOOD_TIL_NEXT_CROSS'; 
 _ -> unknown
 end,
-{'TimeInForce', Val};
+{'TimeInForce', {Val, Value}};
 field_parse(<<"60=", Value/binary>>) -> 
 {'TransactTime', Value};
 field_parse(<<"61=", Value/binary>>) -> 
@@ -414,7 +462,7 @@ Val = case Value of
 <<"2">> -> 'BACKGROUND'; 
 _ -> unknown
 end,
-{'Urgency', Val};
+{'Urgency', {Val, Value}};
 field_parse(<<"62=", Value/binary>>) -> 
 {'ValidUntilTime', Value};
 field_parse(<<"63=", Value/binary>>) -> 
@@ -431,7 +479,7 @@ Val = case Value of
 <<"9">> -> 'TPLUS5'; 
 _ -> unknown
 end,
-{'SettlmntTyp', Val};
+{'SettlmntTyp', {Val, Value}};
 field_parse(<<"64=", Value/binary>>) -> 
 {'FutSettDate', Value};
 field_parse(<<"65=", Value/binary>>) -> 
@@ -456,7 +504,7 @@ Val = case Value of
 <<"5">> -> 'CALCULATED_WITHOUT_PRELIMINARY'; 
 _ -> unknown
 end,
-{'AllocTransType', Val};
+{'AllocTransType', {Val, Value}};
 field_parse(<<"72=", Value/binary>>) -> 
 {'RefAllocID', Value};
 field_parse(<<"73=", Value/binary>>) -> 
@@ -472,14 +520,14 @@ Val = case Value of
 <<"STGY">> -> 'STGY'; 
 _ -> unknown
 end,
-{'ExecBroker', Val};
+{'ExecBroker', {Val, Value}};
 field_parse(<<"77=", Value/binary>>) -> 
 Val = case Value of
 <<"O">> -> 'OPEN'; 
 <<"C">> -> 'CLOSE'; 
 _ -> unknown
 end,
-{'OpenClose', Val};
+{'OpenClose', {Val, Value}};
 field_parse(<<"78=", Value/binary>>) -> 
 {'NoAllocs', to_int(Value)};
 field_parse(<<"79=", Value/binary>>) -> 
@@ -497,7 +545,7 @@ Val = case Value of
 <<"6">> -> 'PLAN_SPONSOR'; 
 _ -> unknown
 end,
-{'ProcessCode', Val};
+{'ProcessCode', {Val, Value}};
 field_parse(<<"82=", Value/binary>>) -> 
 {'NoRpts', to_int(Value)};
 field_parse(<<"83=", Value/binary>>) -> 
@@ -516,7 +564,7 @@ Val = case Value of
 <<"3">> -> 'RECEIVED'; 
 _ -> unknown
 end,
-{'AllocStatus', Val};
+{'AllocStatus', {Val, Value}};
 field_parse(<<"88=", Value/binary>>) -> 
 Val = case Value of
 <<"0">> -> 'UNKNOWN_ACCOUNT'; 
@@ -529,7 +577,7 @@ Val = case Value of
 <<"7">> -> 'OTHER'; 
 _ -> unknown
 end,
-{'AllocRejCode', Val};
+{'AllocRejCode', {Val, Value}};
 field_parse(<<"89=", Value/binary>>) -> 
 {'Signature', Value};
 field_parse(<<"90=", Value/binary>>) -> 
@@ -547,7 +595,7 @@ Val = case Value of
 <<"2">> -> 'ADMIN_REPLY'; 
 _ -> unknown
 end,
-{'EmailType', Val};
+{'EmailType', {Val, Value}};
 field_parse(<<"95=", Value/binary>>) -> 
 {'RawDataLength', to_int(Value)};
 field_parse(<<"96=", Value/binary>>) -> 
@@ -559,7 +607,7 @@ Val = case Value of
 <<"0">> -> 'NONE_OTHER'; 
 _ -> unknown
 end,
-{'EncryptMethod', Val};
+{'EncryptMethod', {Val, Value}};
 field_parse(<<"99=", Value/binary>>) -> 
 {'StopPx', to_float(Value)};
 field_parse(<<"100=", Value/binary>>) -> 
@@ -572,7 +620,7 @@ Val = case Value of
 <<"3">> -> 'ALREADY_PENDING'; 
 _ -> unknown
 end,
-{'CxlRejReason', Val};
+{'CxlRejReason', {Val, Value}};
 field_parse(<<"103=", Value/binary>>) -> 
 Val = case Value of
 <<"0">> -> 'BROKER_OPTION'; 
@@ -586,7 +634,7 @@ Val = case Value of
 <<"8">> -> 'STALE_ORDER'; 
 _ -> unknown
 end,
-{'OrdRejReason', Val};
+{'OrdRejReason', {Val, Value}};
 field_parse(<<"104=", Value/binary>>) -> 
 Val = case Value of
 <<"A">> -> 'ALL_OR_NONE'; 
@@ -607,7 +655,7 @@ Val = case Value of
 <<"Z">> -> 'PREOPEN'; 
 _ -> unknown
 end,
-{'IOIQualifier', Val};
+{'IOIQualifier', {Val, Value}};
 field_parse(<<"105=", Value/binary>>) -> 
 {'WaveNo', Value};
 field_parse(<<"106=", Value/binary>>) -> 
@@ -630,14 +678,14 @@ Val = case Value of
 <<"N">> -> 'NO'; 
 _ -> unknown
 end,
-{'ReportToExch', Val};
+{'ReportToExch', {Val, Value}};
 field_parse(<<"114=", Value/binary>>) -> 
 Val = case Value of
 <<"Y">> -> 'YES'; 
 <<"N">> -> 'NO'; 
 _ -> unknown
 end,
-{'LocateReqd', Val};
+{'LocateReqd', {Val, Value}};
 field_parse(<<"115=", Value/binary>>) -> 
 {'OnBehalfOfCompID', Value};
 field_parse(<<"116=", Value/binary>>) -> 
@@ -656,7 +704,7 @@ Val = case Value of
 <<"N">> -> 'NO'; 
 _ -> unknown
 end,
-{'ForexReq', Val};
+{'ForexReq', {Val, Value}};
 field_parse(<<"122=", Value/binary>>) -> 
 {'OrigSendingTime', Value};
 field_parse(<<"123=", Value/binary>>) -> 
@@ -665,7 +713,7 @@ Val = case Value of
 <<"N">> -> 'SEQUENCE_RESET_IGNORE_MSGSEQNUM'; 
 _ -> unknown
 end,
-{'GapFillFlag', Val};
+{'GapFillFlag', {Val, Value}};
 field_parse(<<"124=", Value/binary>>) -> 
 {'NoExecs', to_int(Value)};
 field_parse(<<"125=", Value/binary>>) -> 
@@ -682,7 +730,7 @@ Val = case Value of
 <<"Z">> -> 'OTHER'; 
 _ -> unknown
 end,
-{'DKReason', Val};
+{'DKReason', {Val, Value}};
 field_parse(<<"128=", Value/binary>>) -> 
 {'DeliverToCompID', Value};
 field_parse(<<"129=", Value/binary>>) -> 
@@ -693,7 +741,7 @@ Val = case Value of
 <<"N">> -> 'NOT_NATURAL'; 
 _ -> unknown
 end,
-{'IOINaturalFlag', Val};
+{'IOINaturalFlag', {Val, Value}};
 field_parse(<<"131=", Value/binary>>) -> 
 {'QuoteReqID', Value};
 field_parse(<<"132=", Value/binary>>) -> 
@@ -723,7 +771,7 @@ Val = case Value of
 <<"9">> -> 'CONSUMPTION_TAX'; 
 _ -> unknown
 end,
-{'MiscFeeType', Val};
+{'MiscFeeType', {Val, Value}};
 field_parse(<<"140=", Value/binary>>) -> 
 {'PrevClosePx', to_float(Value)};
 field_parse(<<"141=", Value/binary>>) -> 
@@ -732,7 +780,7 @@ Val = case Value of
 <<"N">> -> 'NO'; 
 _ -> unknown
 end,
-{'ResetSeqNumFlag', Val};
+{'ResetSeqNumFlag', {Val, Value}};
 field_parse(<<"142=", Value/binary>>) -> 
 {'SenderLocationID', Value};
 field_parse(<<"143=", Value/binary>>) -> 
@@ -770,7 +818,7 @@ Val = case Value of
 <<"I">> -> 'INFORMATION'; 
 _ -> unknown
 end,
-{'ExecType', Val};
+{'ExecType', {Val, Value}};
 field_parse(<<"151=", Value/binary>>) -> 
 {'LeavesQty', to_float(Value)};
 field_parse(<<"152=", Value/binary>>) -> 
@@ -787,7 +835,7 @@ Val = case Value of
 <<"D">> -> 'DIVIDE'; 
 _ -> unknown
 end,
-{'SettlCurrFxRateCalc', Val};
+{'SettlCurrFxRateCalc', {Val, Value}};
 field_parse(<<"157=", Value/binary>>) -> 
 {'NumDaysInterest', to_int(Value)};
 field_parse(<<"158=", Value/binary>>) -> 
@@ -802,7 +850,7 @@ Val = case Value of
 <<"3">> -> 'SPECIFIC_ALLOCATION_ACCOUNT_STANDING'; 
 _ -> unknown
 end,
-{'SettlInstMode', Val};
+{'SettlInstMode', {Val, Value}};
 field_parse(<<"161=", Value/binary>>) -> 
 {'AllocText', Value};
 field_parse(<<"162=", Value/binary>>) -> 
@@ -814,7 +862,7 @@ Val = case Value of
 <<"R">> -> 'REPLACE'; 
 _ -> unknown
 end,
-{'SettlInstTransType', Val};
+{'SettlInstTransType', {Val, Value}};
 field_parse(<<"164=", Value/binary>>) -> 
 {'EmailThreadID', Value};
 field_parse(<<"165=", Value/binary>>) -> 
@@ -823,7 +871,7 @@ Val = case Value of
 <<"2">> -> 'INSTITUTION'; 
 _ -> unknown
 end,
-{'SettlInstSource', Val};
+{'SettlInstSource', {Val, Value}};
 field_parse(<<"166=", Value/binary>>) -> 
 Val = case Value of
 <<"CED">> -> 'CEDEL'; 
@@ -835,7 +883,7 @@ Val = case Value of
 <<"ISO">> -> 'LOCAL_MARKET_SETTLE_LOCATION'; 
 _ -> unknown
 end,
-{'SettlLocation', Val};
+{'SettlLocation', {Val, Value}};
 field_parse(<<"167=", Value/binary>>) -> 
 Val = case Value of
 <<"BA">> -> 'BANKERS_ACCEPTANCE'; 
@@ -871,7 +919,7 @@ Val = case Value of
 <<"ZOO">> -> 'CATS_TIGERS'; 
 _ -> unknown
 end,
-{'SecurityType', Val};
+{'SecurityType', {Val, Value}};
 field_parse(<<"168=", Value/binary>>) -> 
 {'EffectiveTime', Value};
 field_parse(<<"169=", Value/binary>>) -> 
@@ -882,7 +930,7 @@ Val = case Value of
 <<"3">> -> 'A_GLOBAL_CUSTODIAN'; 
 _ -> unknown
 end,
-{'StandInstDbType', Val};
+{'StandInstDbType', {Val, Value}};
 field_parse(<<"170=", Value/binary>>) -> 
 {'StandInstDbName', Value};
 field_parse(<<"171=", Value/binary>>) -> 
@@ -943,7 +991,7 @@ Val = case Value of
 <<"1">> -> 'FX_SWAP'; 
 _ -> unknown
 end,
-{'AllocLinkType', Val};
+{'AllocLinkType', {Val, Value}};
 field_parse(<<"198=", Value/binary>>) -> 
 {'SecondaryOrderID', Value};
 field_parse(<<"199=", Value/binary>>) -> 
@@ -956,7 +1004,7 @@ Val = case Value of
 <<"1">> -> 'CALL'; 
 _ -> unknown
 end,
-{'PutOrCall', Val};
+{'PutOrCall', {Val, Value}};
 field_parse(<<"202=", Value/binary>>) -> 
 {'StrikePrice', to_float(Value)};
 field_parse(<<"203=", Value/binary>>) -> 
@@ -965,14 +1013,14 @@ Val = case Value of
 <<"1">> -> 'UNCOVERED'; 
 _ -> unknown
 end,
-{'CoveredOrUncovered', Val};
+{'CoveredOrUncovered', {Val, Value}};
 field_parse(<<"204=", Value/binary>>) -> 
 Val = case Value of
 <<"0">> -> 'CUSTOMER'; 
 <<"1">> -> 'FIRM'; 
 _ -> unknown
 end,
-{'CustomerOrFirm', Val};
+{'CustomerOrFirm', {Val, Value}};
 field_parse(<<"205=", Value/binary>>) -> 
 {'MaturityDay', Value};
 field_parse(<<"206=", Value/binary>>) -> 
@@ -985,7 +1033,7 @@ Val = case Value of
 <<"N">> -> 'DETAILS_SHOULD_NOT_BE_COMMUNICATED'; 
 _ -> unknown
 end,
-{'NotifyBrokerOfCredit', Val};
+{'NotifyBrokerOfCredit', {Val, Value}};
 field_parse(<<"209=", Value/binary>>) -> 
 Val = case Value of
 <<"1">> -> 'MATCH'; 
@@ -993,7 +1041,7 @@ Val = case Value of
 <<"3">> -> 'FORWARD_AND_MATCH'; 
 _ -> unknown
 end,
-{'AllocHandlInst', Val};
+{'AllocHandlInst', {Val, Value}};
 field_parse(<<"210=", Value/binary>>) -> 
 {'MaxShow', to_float(Value)};
 field_parse(<<"211=", Value/binary>>) -> 
@@ -1014,7 +1062,7 @@ Val = case Value of
 <<"4">> -> 'BLOCK_LIST'; 
 _ -> unknown
 end,
-{'RoutingType', Val};
+{'RoutingType', {Val, Value}};
 field_parse(<<"217=", Value/binary>>) -> 
 {'RoutingID', Value};
 field_parse(<<"218=", Value/binary>>) -> 
@@ -1032,7 +1080,7 @@ Val = case Value of
 <<"9">> -> 'SIXMOLIBOR'; 
 _ -> unknown
 end,
-{'Benchmark', Val};
+{'Benchmark', {Val, Value}};
 field_parse(<<"223=", Value/binary>>) -> 
 {'CouponRate', Value};
 field_parse(<<"231=", Value/binary>>) -> 
@@ -1046,26 +1094,26 @@ Val = case Value of
 <<"2">> -> 'DISABLE_PREVIOUS'; 
 _ -> unknown
 end,
-{'SubscriptionRequestType', Val};
+{'SubscriptionRequestType', {Val, Value}};
 field_parse(<<"264=", Value/binary>>) -> 
 Val = case Value of
 _ -> unknown
 end,
-{'MarketDepth', Val};
+{'MarketDepth', {Val, Value}};
 field_parse(<<"265=", Value/binary>>) -> 
 Val = case Value of
 <<"0">> -> 'FULL_REFRESH'; 
 <<"1">> -> 'INCREMENTAL_REFRESH'; 
 _ -> unknown
 end,
-{'MDUpdateType', Val};
+{'MDUpdateType', {Val, Value}};
 field_parse(<<"266=", Value/binary>>) -> 
 Val = case Value of
 <<"Y">> -> 'ONE_BOOK_ENTRY_PER_SIDE_PER_PRICE'; 
 <<"N">> -> 'MULTIPLE_ENTRIES_PER_SIDE_PER_PRICE_ALLOWED'; 
 _ -> unknown
 end,
-{'AggregatedBook', Val};
+{'AggregatedBook', {Val, Value}};
 field_parse(<<"267=", Value/binary>>) -> 
 {'NoMDEntryTypes', to_int(Value)};
 field_parse(<<"268=", Value/binary>>) -> 
@@ -1084,7 +1132,7 @@ Val = case Value of
 <<"9">> -> 'TRADING_SESSION_VWAP_PRICE'; 
 _ -> unknown
 end,
-{'MDEntryType', Val};
+{'MDEntryType', {Val, Value}};
 field_parse(<<"270=", Value/binary>>) -> 
 {'MDEntryPx', to_float(Value)};
 field_parse(<<"271=", Value/binary>>) -> 
@@ -1101,7 +1149,7 @@ Val = case Value of
 <<"3">> -> 'ZEROMINUS_TICK'; 
 _ -> unknown
 end,
-{'TickDirection', Val};
+{'TickDirection', {Val, Value}};
 field_parse(<<"275=", Value/binary>>) -> 
 {'MDMkt', Value};
 field_parse(<<"276=", Value/binary>>) -> 
@@ -1117,7 +1165,7 @@ Val = case Value of
 <<"I">> -> 'NONFIRM'; 
 _ -> unknown
 end,
-{'QuoteCondition', Val};
+{'QuoteCondition', {Val, Value}};
 field_parse(<<"277=", Value/binary>>) -> 
 Val = case Value of
 <<"A">> -> 'CASH'; 
@@ -1136,7 +1184,7 @@ Val = case Value of
 <<"N">> -> 'STOPPED_STOCK'; 
 _ -> unknown
 end,
-{'TradeCondition', Val};
+{'TradeCondition', {Val, Value}};
 field_parse(<<"278=", Value/binary>>) -> 
 {'MDEntryID', Value};
 field_parse(<<"279=", Value/binary>>) -> 
@@ -1146,7 +1194,7 @@ Val = case Value of
 <<"2">> -> 'DELETE'; 
 _ -> unknown
 end,
-{'MDUpdateAction', Val};
+{'MDUpdateAction', {Val, Value}};
 field_parse(<<"280=", Value/binary>>) -> 
 {'MDEntryRefID', Value};
 field_parse(<<"281=", Value/binary>>) -> 
@@ -1162,7 +1210,7 @@ Val = case Value of
 <<"8">> -> 'UNSUPPORTED_MDENTRYTYPE'; 
 _ -> unknown
 end,
-{'MDReqRejReason', Val};
+{'MDReqRejReason', {Val, Value}};
 field_parse(<<"282=", Value/binary>>) -> 
 {'MDEntryOriginator', Value};
 field_parse(<<"283=", Value/binary>>) -> 
@@ -1175,7 +1223,7 @@ Val = case Value of
 <<"1">> -> 'ERROR'; 
 _ -> unknown
 end,
-{'DeleteReason', Val};
+{'DeleteReason', {Val, Value}};
 field_parse(<<"286=", Value/binary>>) -> 
 Val = case Value of
 <<"0">> -> 'DAILY_OPEN_CLOSE__SETTLEMENT_PRICE'; 
@@ -1183,7 +1231,7 @@ Val = case Value of
 <<"2">> -> 'DELIVERY_SETTLEMENT_PRICE'; 
 _ -> unknown
 end,
-{'OpenCloseSettleFlag', Val};
+{'OpenCloseSettleFlag', {Val, Value}};
 field_parse(<<"287=", Value/binary>>) -> 
 {'SellerDays', to_int(Value)};
 field_parse(<<"288=", Value/binary>>) -> 
@@ -1197,7 +1245,7 @@ Val = case Value of
 <<"1">> -> 'BANKRUPT'; 
 _ -> unknown
 end,
-{'FinancialStatus', Val};
+{'FinancialStatus', {Val, Value}};
 field_parse(<<"292=", Value/binary>>) -> 
 Val = case Value of
 <<"A">> -> 'EXDIVIDEND'; 
@@ -1207,7 +1255,7 @@ Val = case Value of
 <<"E">> -> 'EXINTEREST'; 
 _ -> unknown
 end,
-{'CorporateAction', Val};
+{'CorporateAction', {Val, Value}};
 field_parse(<<"293=", Value/binary>>) -> 
 {'DefBidSize', to_float(Value)};
 field_parse(<<"294=", Value/binary>>) -> 
@@ -1234,7 +1282,7 @@ Val = case Value of
 <<"9">> -> 'NOT_AUTHORIZED_TO_QUOTE_SECURITY'; 
 _ -> unknown
 end,
-{'QuoteRejectReason', Val};
+{'QuoteRejectReason', {Val, Value}};
 field_parse(<<"301=", Value/binary>>) -> 
 {'QuoteResponseLevel', to_int(Value)};
 field_parse(<<"302=", Value/binary>>) -> 
@@ -1283,7 +1331,7 @@ Val = case Value of
 <<"3">> -> 'REQUEST_LIST_SECURITIES'; 
 _ -> unknown
 end,
-{'SecurityRequestType', Val};
+{'SecurityRequestType', {Val, Value}};
 field_parse(<<"322=", Value/binary>>) -> 
 {'SecurityResponseID', Value};
 field_parse(<<"323=", Value/binary>>) -> 
@@ -1296,7 +1344,7 @@ Val = case Value of
 <<"6">> -> 'CAN_NOT_MATCH_SELECTION_CRITERIA'; 
 _ -> unknown
 end,
-{'SecurityResponseType', Val};
+{'SecurityResponseType', {Val, Value}};
 field_parse(<<"324=", Value/binary>>) -> 
 {'SecurityStatusReqID', Value};
 field_parse(<<"325=", Value/binary>>) -> 
@@ -1305,7 +1353,7 @@ Val = case Value of
 <<"N">> -> 'MESSAGE_IS_BEING_SENT_AS_A_RESULT_OF_A_PRIOR_REQUEST'; 
 _ -> unknown
 end,
-{'UnsolicitedIndicator', Val};
+{'UnsolicitedIndicator', {Val, Value}};
 field_parse(<<"326=", Value/binary>>) -> 
 Val = case Value of
 <<"1">> -> 'OPENING_DELAY'; 
@@ -1330,7 +1378,7 @@ Val = case Value of
 <<"20">> -> 'UNKNOWN_OR_INVALID'; 
 _ -> unknown
 end,
-{'SecurityTradingStatus', Val};
+{'SecurityTradingStatus', {Val, Value}};
 field_parse(<<"327=", Value/binary>>) -> 
 Val = case Value of
 <<"I">> -> 'ORDER_IMBALANCE'; 
@@ -1341,21 +1389,21 @@ Val = case Value of
 <<"M">> -> 'ADDITIONAL_INFORMATION'; 
 _ -> unknown
 end,
-{'HaltReason', Val};
+{'HaltReason', {Val, Value}};
 field_parse(<<"328=", Value/binary>>) -> 
 Val = case Value of
 <<"Y">> -> 'HALT_WAS_DUE_TO_COMMON_STOCK_BEING_HALTED'; 
 <<"N">> -> 'HALT_WAS_NOT_RELATED_TO_A_HALT_OF_THE_COMMON_STOCK'; 
 _ -> unknown
 end,
-{'InViewOfCommon', Val};
+{'InViewOfCommon', {Val, Value}};
 field_parse(<<"329=", Value/binary>>) -> 
 Val = case Value of
 <<"Y">> -> 'HALT_WAS_DUE_TO_RELATED_SECURITY_BEING_HALTED'; 
 <<"N">> -> 'HALT_WAS_NOT_RELATED_TO_A_HALT_OF_THE_RELATED_SECURITY'; 
 _ -> unknown
 end,
-{'DueToRelated', Val};
+{'DueToRelated', {Val, Value}};
 field_parse(<<"330=", Value/binary>>) -> 
 {'BuyVolume', to_float(Value)};
 field_parse(<<"331=", Value/binary>>) -> 
@@ -1371,7 +1419,7 @@ Val = case Value of
 <<"3">> -> 'CORRECTION'; 
 _ -> unknown
 end,
-{'Adjustment', Val};
+{'Adjustment', {Val, Value}};
 field_parse(<<"335=", Value/binary>>) -> 
 {'TradSesReqID', Value};
 field_parse(<<"336=", Value/binary>>) -> 
@@ -1385,7 +1433,7 @@ Val = case Value of
 <<"3">> -> 'TWO_PARTY'; 
 _ -> unknown
 end,
-{'TradSesMethod', Val};
+{'TradSesMethod', {Val, Value}};
 field_parse(<<"339=", Value/binary>>) -> 
 Val = case Value of
 <<"1">> -> 'TESTING'; 
@@ -1393,7 +1441,7 @@ Val = case Value of
 <<"3">> -> 'PRODUCTION'; 
 _ -> unknown
 end,
-{'TradSesMode', Val};
+{'TradSesMode', {Val, Value}};
 field_parse(<<"340=", Value/binary>>) -> 
 Val = case Value of
 <<"1">> -> 'HALTED'; 
@@ -1403,7 +1451,7 @@ Val = case Value of
 <<"5">> -> 'PRECLOSE'; 
 _ -> unknown
 end,
-{'TradSesStatus', Val};
+{'TradSesStatus', {Val, Value}};
 field_parse(<<"341=", Value/binary>>) -> 
 {'TradSesStartTime', Value};
 field_parse(<<"342=", Value/binary>>) -> 
@@ -1471,7 +1519,7 @@ Val = case Value of
 <<"9">> -> 'NOT_AUTHORIZED_TO_QUOTE_SECURITY'; 
 _ -> unknown
 end,
-{'QuoteEntryRejectReason', Val};
+{'QuoteEntryRejectReason', {Val, Value}};
 field_parse(<<"369=", Value/binary>>) -> 
 {'LastMsgSeqNumProcessed', to_int(Value)};
 field_parse(<<"370=", Value/binary>>) -> 
@@ -1496,14 +1544,14 @@ Val = case Value of
 <<"11">> -> 'INVALID_MESSAGE_TYPE'; 
 _ -> unknown
 end,
-{'SessionRejectReason', Val};
+{'SessionRejectReason', {Val, Value}};
 field_parse(<<"374=", Value/binary>>) -> 
 Val = case Value of
 <<"N">> -> 'NEW'; 
 <<"C">> -> 'CANCEL'; 
 _ -> unknown
 end,
-{'BidRequestTransType', Val};
+{'BidRequestTransType', {Val, Value}};
 field_parse(<<"375=", Value/binary>>) -> 
 {'ContraBroker', Value};
 field_parse(<<"376=", Value/binary>>) -> 
@@ -1514,12 +1562,12 @@ Val = case Value of
 <<"N">> -> 'WAS_NOT_SOLICITED'; 
 _ -> unknown
 end,
-{'SolicitedFlag', Val};
+{'SolicitedFlag', {Val, Value}};
 field_parse(<<"378=", Value/binary>>) -> 
 Val = case Value of
 _ -> unknown
 end,
-{'ExecRestatementReason', Val};
+{'ExecRestatementReason', {Val, Value}};
 field_parse(<<"379=", Value/binary>>) -> 
 {'BusinessRejectRefID', Value};
 field_parse(<<"380=", Value/binary>>) -> 
@@ -1532,7 +1580,7 @@ Val = case Value of
 <<"5">> -> 'CONDITIONALLY_REQUIRED_FIELD_MISSING'; 
 _ -> unknown
 end,
-{'BusinessRejectReason', Val};
+{'BusinessRejectReason', {Val, Value}};
 field_parse(<<"381=", Value/binary>>) -> 
 {'GrossTradeAmt', Value};
 field_parse(<<"382=", Value/binary>>) -> 
@@ -1547,7 +1595,7 @@ Val = case Value of
 <<"R">> -> 'RECEIVE'; 
 _ -> unknown
 end,
-{'MsgDirection', Val};
+{'MsgDirection', {Val, Value}};
 field_parse(<<"386=", Value/binary>>) -> 
 {'NoTradingSessions', to_int(Value)};
 field_parse(<<"387=", Value/binary>>) -> 
@@ -1562,7 +1610,7 @@ Val = case Value of
 <<"5">> -> 'RELATED_TO_LAST_TRADE_PRICE'; 
 _ -> unknown
 end,
-{'DiscretionInst', Val};
+{'DiscretionInst', {Val, Value}};
 field_parse(<<"389=", Value/binary>>) -> 
 {'DiscretionOffset', Value};
 field_parse(<<"390=", Value/binary>>) -> 
@@ -1613,7 +1661,7 @@ Val = case Value of
 <<"N">> -> 'FALSE'; 
 _ -> unknown
 end,
-{'ExchangeForPhysical', Val};
+{'ExchangeForPhysical', {Val, Value}};
 field_parse(<<"412=", Value/binary>>) -> 
 {'OutMainCntryUIndex', Value};
 field_parse(<<"413=", Value/binary>>) -> 
@@ -1651,7 +1699,7 @@ Val = case Value of
 <<"2">> -> 'ACCUMULATE_UNTIL_VERBALLY_NOTIFIED_OTHERWISE'; 
 _ -> unknown
 end,
-{'GTBookingInst', Val};
+{'GTBookingInst', {Val, Value}};
 field_parse(<<"428=", Value/binary>>) -> 
 {'NoStrikes', to_int(Value)};
 field_parse(<<"429=", Value/binary>>) -> 
@@ -1698,7 +1746,7 @@ Val = case Value of
 <<"A">> -> 'AGENT'; 
 _ -> unknown
 end,
-{'OrderCapacity', Val};
+{'OrderCapacity', {Val, Value}};
 field_parse(<<"529=", Value/binary>>) -> 
 Val = case Value of
 <<"B">> -> 'ISSUER_HOLDING'; 
@@ -1706,7 +1754,7 @@ Val = case Value of
 <<"5">> -> 'ACTING_AS_MARKET_MAKER'; 
 _ -> unknown
 end,
-{'OrderRestrictions', Val};
+{'OrderRestrictions', {Val, Value}};
 field_parse(<<"571=", Value/binary>>) -> 
 {'TradeReportID', Value};
 field_parse(<<"572=", Value/binary>>) -> 
@@ -1727,7 +1775,7 @@ Val = case Value of
 <<"99">> -> 'OTHER'; 
 _ -> unknown
 end,
-{'TradeReportRejectReason', Val};
+{'TradeReportRejectReason', {Val, Value}};
 field_parse(<<"820=", Value/binary>>) -> 
 {'TradeLinkId', Value};
 field_parse(<<"828=", Value/binary>>) -> 
@@ -1760,7 +1808,7 @@ Val = case Value of
 <<"E">> -> 'EXTERNAL'; 
 _ -> unknown
 end,
-{'InternalExternal', Val};
+{'InternalExternal', {Val, Value}};
 field_parse(<<"6209=", Value/binary>>) -> 
 {'ClRefID', Value};
 field_parse(<<"9140=", Value/binary>>) -> 
@@ -1772,7 +1820,7 @@ Val = case Value of
 <<"I">> -> 'IMBALANCE_ONLY'; 
 _ -> unknown
 end,
-{'DisplayInst', Val};
+{'DisplayInst', {Val, Value}};
 field_parse(<<"9165=", Value/binary>>) -> 
 {'RFQReferenceNo', Value};
 field_parse(<<"9292=", Value/binary>>) -> 
@@ -1781,7 +1829,7 @@ field_parse(<<"9355=", Value/binary>>) ->
 Val = case Value of
 _ -> unknown
 end,
-{'CrossTradeFlag', Val};
+{'CrossTradeFlag', {Val, Value}};
 field_parse(<<"9822=", Value/binary>>) -> 
 {'ClearingPrice', Value};
 field_parse(<<"9854=", Value/binary>>) -> 
@@ -1792,7 +1840,7 @@ Val = case Value of
 <<"M">> -> 'MATCHED'; 
 _ -> unknown
 end,
-{'LockedInStatus', Val};
+{'LockedInStatus', {Val, Value}};
 field_parse(<<"9855=", Value/binary>>) -> 
 Val = case Value of
 <<"1">> -> '60_MINUTES'; 
@@ -1805,7 +1853,7 @@ Val = case Value of
 <<"8">> -> 'UNTIL_END_OF_CURRENT_DAY'; 
 _ -> unknown
 end,
-{'DelayedDissemination', Val};
+{'DelayedDissemination', {Val, Value}};
 field_parse(<<"9856=", Value/binary>>) -> 
 Val = case Value of
 <<"B">> -> 'BUYER_SUBMITTED_BREAK_REQUEST'; 
@@ -1814,13 +1862,13 @@ Val = case Value of
 <<"L">> -> 'TRADE_BROKEN_THROUGH_MARKET_CENTER'; 
 _ -> unknown
 end,
-{'BreakIndicator', Val};
+{'BreakIndicator', {Val, Value}};
 field_parse(<<"9857=", Value/binary>>) -> 
 Val = case Value of
 <<"M">> -> 'MATCHED'; 
 _ -> unknown
 end,
-{'LockedIn', Val};
+{'LockedIn', {Val, Value}};
 field_parse(<<"9861=", Value/binary>>) -> 
 {'BrSeqNbr', Value};
 field_parse(<<"9862=", Value/binary>>) -> 
