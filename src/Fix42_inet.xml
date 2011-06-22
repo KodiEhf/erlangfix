@@ -64,7 +64,7 @@
       <!-- INET end -->
     </message>
     <message name="Logout" msgtype="5" msgcat="admin">
-      <!-- INET begin -->
+      <!-- INET begin -->MsgType
       <field name="Text" required="N"/>
       <!-- INET end -->
     </message>
@@ -165,7 +165,6 @@
       <!-- Y -->
       <!--TRADE REPORT SPECIFIC-->
       <field name="TradeReportID" required="N"/>
-      <field name="SecurityDesc" required="N"/>
       <field name="ClearingInstruction" required="N"/>
       <field name="ReversalIndicator" required="N"/>
       <field name="TrdType" required="N"/>
@@ -455,8 +454,8 @@
     <field number="55" name="Symbol" type="STRING"/>
     <field number="56" name="TargetCompID" type="STRING"/>
     <field number="57" name="TargetSubID" type="STRING">
-      <!-- <value enum="T" name="TRADE_REPORT"/>
-      <value enum="S" name="ORDER_ENTRY"/> -->
+      <value enum="T" description="TRADE_REPORT"/>
+      <value enum="S" description="ORDER_ENTRY"/>
     </field>
     <field number="58" name="Text" type="STRING"/>
     <field number="59" name="TimeInForce" type="CHAR">
@@ -875,13 +874,8 @@
       <value enum="2" description="DISABLE_PREVIOUS"/>
     </field>
     <field number="264" name="MarketDepth" type="INT">
-      <!--
-      Temporarily commented out until we can handle
-      N>1 scenario
-
       <value enum="0" description="FULL_BOOK"/>
       <value enum="1" description="TOP_OF_BOOK"/>
--->
     </field>
     <field number="265" name="MDUpdateType" type="INT">
       <value enum="0" description="FULL_REFRESH"/>
@@ -1178,12 +1172,12 @@
       <value enum="N" description="WAS_NOT_SOLICITED"/>
     </field>
     <field number="378" name="ExecRestatementReason" type="STRING">
-      <!--   <value enum="0" description="GT_CORPORATE_ACTION"/>
+      <value enum="0" description="GT_CORPORATE_ACTION"/>
       <value enum="1" description="GT_RENEWAL_RESTATEMENT"/>
       <value enum="2" description="VERBAL_CHANGE"/>
       <value enum="3" description="REPRICING_OF_ORDER"/>
       <value enum="4" description="BROKER_OPTION"/>
-      <value enum="5" description="PARTIAL_DECLINE_OF_ORDERQTY"/> -->
+      <value enum="5" description="PARTIAL_DECLINE_OF_ORDERQTY"/>
     </field>
     <field number="379" name="BusinessRejectRefID" type="STRING"/>
     <field number="380" name="BusinessRejectReason" type="INT">
@@ -1339,9 +1333,9 @@
     <field number="9165" name="RFQReferenceNo" type="STRING"/>
     <field number="9292" name="MICCode" type="STRING"/>
     <field number="9355" name="CrossTradeFlag" type="STRING">
-      <!--  <value enum="C" description="CLOSING_CROSS"/>
+      <value enum="C" description="CLOSING_CROSS"/>
       <value enum="O" description="OPENING_CROSS"/>
-      <value enum="I" description="INTRADAY_CROSS"/> -->
+      <value enum="I" description="INTRADAY_CROSS"/>
     </field>
     <field number="9822" name="ClearingPrice" type="FLOAT"/>
     <field number="9854" name="OverrideFlag" type="BOOLEAN"/>
