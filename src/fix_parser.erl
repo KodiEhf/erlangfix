@@ -1,21 +1,6 @@
 -module(fix_parser).
 -include("fix.hrl").
--compile(export_all).
-
--record('Header', {'DeliverToSubID','DeliverToCompID','OrigSendingTime','OnBehalfOfSubID','OnBehalfOfCompID','PossResend','TargetSubID','TargetCompID','SendingTime','SenderSubID','SenderCompID','PossDupFlag','MsgSeqNum','MsgType','BodyLength','BeginString'}).
--record('Heartbeat', {'TestReqID'}).
--record('Logon', {'ResetSeqNumFlag','HeartBtInt','EncryptMethod'}).
--record('TestRequest', {'TestReqID'}).
--record('ResendRequest', {'EndSeqNo','BeginSeqNo'}).
--record('Reject', {'SessionRejectReason','RefMsgType','RefTagID','Text','RefSeqNum'}).
--record('SequenceReset', {'GapFillFlag','NewSeqNo'}).
--record('Logout', {'Text'}).
--record('NewOrderSingle', {'BrSeqNbr','CrossTradeFlag','DisplayInst','ClRefID','SubMktID','OrderRestrictions','OrderCapacity','ClearingAccount','ClearingFirm','PegDifference','ExpireTime','MaxFloor','MinQty','ExecBroker','TransactTime','TimeInForce','Symbol','Side','SecurityID','Price','OrdType','OrderQty','HandlInst','ExecInst','Currency','ClOrdID'}).
--record('ExecutionReport', {'LockedIn','TradingsessionSubId','TradeLinkId','SecondaryTradeReportRefID','TradeReportRefId','TimestampCounterpart','TimestampOwn','DisseminationTime','LockedInStatus','BreakIndicator','PriceType','StrikeTime','TradeReportRejectReason','ContraClearingAcct','ContraTradePA','DelayedDissemination','OverrideFlag','ClearingPrice','MICCode','RFQReferenceNo','ContraOrderRestrictions','Memo','TrdRptStatus','TradeReportType','PublishTrdIndicator','TrdType','ReversalIndicator','ClearingInstruction','TradeReportID','LiquidityFlag','BrSeqNbr','CrossTradeFlag','DisplayInst','ClRefID','SubMktID','TradeId','TrdMatchId','OrderRestrictions','OrderCapacity','TransBkdTime','ClearingAccount','ClearingFirm','NoContraBrokers','ContraBroker','SettlBrkrCode','LeavesQty','ExecType','ExpireTime','PegDifference','MaxFloor','MinQty','ClientID','ExecBroker','SecurityDesc','ProcessCode','FutSettDate','TradeDate','TransactTime','TimeInForce','ExecRestatementReason','OrdRejReason','Text','Symbol','Side','SecurityID','Price','OrigClOrdID','OrdType','OrdStatus','OrderQty','SecondaryOrderID','OrderID','LastShares','LastPx','ExecTransType','ExecRefID','ExecInst','ExecID','Currency','CumQty','ClOrdID','AvgPx'}).
--record('OrderCancelReplaceRequest', {'ClRefID','BrSeqNbr','SubMktID','ClearingAccount','ClearingFirm','ExpireTime','MaxFloor','TransactTime','TimeInForce','Text','Symbol','Side','SecurityID','Price','OrigClOrdID','OrdType','OrderQty','OrderID','HandlInst','Currency','ClOrdID'}).
--record('OrderCancelRequest', {'SubMktID','TransactTime','Symbol','Side','SecurityID','OrigClOrdID','OrderQty','OrderID','Currency','ClOrdID'}).
--record('OrderCancelReject', {'CxlRejResponseTo','ClientID','CxlRejReason','Text','OrigClOrdID','OrdStatus','OrderID','ClOrdID'}).
--record('Trailer', {'CheckSum'}).
+-export([parse/2]).
 
 %% We need a mapping of integers to tag-names
 %% We know that a message ends with "10=xyz |"
@@ -23,84 +8,16 @@
 %% BodyLength is always the second field in the message,
 %% length refers to the message length up to checksum field
 
-get_data() ->
-    Data = <<"8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=178|35=8|49=PHLX|56=PERS|52=20071123-05:30:00.000|11=ATOMNOCCC9990900|20=3|150=E|39=E|55=MSFT|167=CS|54=1|38=15|40=2|44=15|58=PHLX EQUITY TESTING|59=0|47=C|32=0|31=0|151=15|14=0|6=0|10=128|8=FIX.4.2|9=0186|35=8|34=1|52=20101119-10:37:46|49=INORD|50=S|56=Y48|57=Y4805|43=Y|122=20101119-06:55:00|6=0.0|11=KODVRSKTKOLJP|14=0|17=0|20=0|37=309|39=0|54=1|55=10771|150=D|151=0|109=Y48|378=1|198=163|10=169|">>,
-    binary:replace(Data, <<"|">>, <<2#01>>,[global]).
+parse(CurrentMessage, MessageLength) ->
+    MessageSplit = binary:split(CurrentMessage, [<<?SOH>>], [global]),
+    {Header, FixMessage, Trailer} = parse_field_list(MessageSplit),
+    <<CheckSumData:MessageLength/binary, _/binary>> = <<CurrentMessage/binary>>,
+    check_sum(CheckSumData), %% todo compare checksums
+    validate(Header),
+    validate(FixMessage),
+    validate(Trailer),
+    {Header, FixMessage, Trailer}.
 
-test(0) ->
-    ok;
-test(Count) ->
-    test(),
-    test(Count-1).
-
-test() ->
-    {ok, FD} = file:open("log.fix", [read, binary]),
-    read_from_file(FD, 0, <<>>),
-    file:close(FD).
-
-read_from_file(FD, Index, Rest)->
-    case file:pread(FD, Index, 8000) of
-	{ok, Data} -> 
-	    {ok, _Result, NewRest} = parse(<<Rest/binary,Data/binary>>),
-	    read_from_file(FD, Index+8000, NewRest);
-	eof -> ok;
-	{error, Reason} ->
-	    io:format("error ~p~n", [Reason])
-    end.
-
-p(<<_Data/binary>>, 0) ->
-    ok;
-p(<<Data/binary>>, Count) ->
-    parse(Data),
-    p(Data, Count-1).
-
-parse(<<Data/binary>>) ->
-    parse_loop(Data, []).
-
-parse_loop(<<>>, Result) ->
-    {ok, Result, <<>>};
-
-parse_loop(<<Data/binary>>, Result) ->
-    try
-	%% Retreive the first field from the message, which must be 'BeginString'
-	[First, Rest] = binary:split(Data, [<<?SOH>>], []),
-	{'BeginString', _Value} = parse_field(First),
-	%%io:format("BeginString is ~p~n", [_Value]),
-	%% Retreive the second field from the message, which must be 'BodyLength'
-	[Second, _Message] = binary:split(Rest, [<<?SOH>>], []),
-	{'BodyLength', BodyLength} = parse_field(Second),
-	%%io:format("BodyLength is ~p~n", [BodyLength]),
-	%% Calculate the message length, upto the checksum
-	MessageLength = BodyLength + length(binary_to_list(First)) + length(binary_to_list(Second)) + 2, %%2 x SOH
-	%% Calculate the message length, including the checksum
-	TotalMessageLength = MessageLength + 7,
-	%% CurrentMessage is a single message in the buffer
-	%io:format("TotalMessageLength is ~p~n", [TotalMessageLength]),
-	<<CurrentMessage:TotalMessageLength/binary, RestOfData/binary>> = <<Data/binary>>,
-	%% Split the message and parse it
-	MessageSplit = binary:split(CurrentMessage, [<<?SOH>>], [global]),
-	%io:format("MessageSplit is ~p~n", [MessageSplit]),
-	{Header, FixMessage, Trailer} = parse_field_list(MessageSplit),
-	%io:format("FixMessage is ~p~n", [FixMessage]),
-	%lists:map(fun(F) -> parse_field(F) end, lists:sublist(MessageSplit, length(MessageSplit)-1)),
-	%% Validate the checksum
-	%% The message part used to verify the checksum
-	<<CheckSumData:MessageLength/binary, _/binary>> = <<Data/binary>>,
-	CheckSum = check_sum(CheckSumData),
-	validate(Header),
-	validate(FixMessage),
-	validate(Trailer),
-	%io:format("validate(Header) is ~p~n", [validate(Header)]),
-        %io:format("message checksum is ~p, Calculated CheckSum is ~p~n", [Trailer#'Trailer'.'CheckSum', CheckSum]),
-	%% Validate the message
-        %%io:format("message is ~p~n", [ParsedMessage]),
-	%%FixMessage = #fix_message{msg_type=proplists:get_value('MsgType', ParsedMessage), fields=ParsedMessage},
-	%%validate(FixMessage),
-	%% Return the parsed message, and the rest of the buffer
-	parse_loop(RestOfData, [FixMessage | Result])
-    catch
-	error: _Err -> {ok, Result, Data}
-    end.
 
 check_sum(<<Message/binary>>) ->
     List = binary_to_list(Message),
@@ -213,7 +130,6 @@ validate(Message = #'Trailer'{}) ->
 	Message#'Trailer'.'CheckSum' =:= undefined -> {error, "Required field 'CheckSum' missing"};
 	true -> ok
     end.
-
 
 parse_field_list(FieldList) ->
     {Header, Rest} = parse_header(#'Header'{}, FieldList),
